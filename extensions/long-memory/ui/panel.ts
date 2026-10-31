@@ -405,8 +405,6 @@ export function createPanel(ctx: ExtensionContext, tui: TUI, theme: Theme, done:
         maxOffset = Math.max(0, body.length - height);
         offset = Math.min(offset, maxOffset);
         lines.push(...body.slice(offset, offset + height).map((text) => ({ text })));
-      } else if (loading && !rows.length && !stats && !output) {
-        lines.push({ text: BLUE(`  ${SPINNER[frame % SPINNER.length]} Loading…`) });
       } else if (output) {
         const raw = output.split("\n");
         maxPan = Math.max(0, ...raw.map((line) => visibleWidth(line) - width));

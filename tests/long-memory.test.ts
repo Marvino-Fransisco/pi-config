@@ -168,7 +168,7 @@ test("memory command discovers actions and manages sticky overlay focus", async 
   assert.match(view(), active("LIST"));
   assert.match(view(), /Filter by kind/);
   assert.doesNotMatch(view(), /search text should not become a filter/);
-  assert.match(view(), /Loading/);
+  assert.equal((plain(panel.render(70)).match(/Loading…/g) ?? []).length, 1);
   panel.handleInput("tab");
   assert.match(view(), active("TRASH"));
   panel.handleInput("tab");
