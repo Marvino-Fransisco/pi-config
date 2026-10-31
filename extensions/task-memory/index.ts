@@ -47,6 +47,7 @@ export default function (pi: ExtensionAPI) {
   let syncedSeq = 0;
   let syncSent = false;
   let taskEngaged = false;
+  let memoryError: string | undefined;
 
   let handoff: Handoff = "none";
   let terminateAfter = false;
@@ -62,8 +63,15 @@ export default function (pi: ExtensionAPI) {
   let scratchSeq = 0;
 
   const now = () => new Date().toISOString();
-  const safeTask = () => { try { return S.loadTaskFile(dir).task; } catch { return null; } };
-  const safeProject = () => { try { return S.loadProject(dir); } catch { return S.emptyProject(); } };
+  const safeTask = () => {
+    try { const task = S.loadTaskFile(dir).task; memoryError = undefined; return task; }
+    catch (err) {
+      const message = (err as Error).message;
+      if (message !== memoryError) notify(`task-memory: ${message}`, "error");
+      memoryError = message;
+      return cachedTask;
+    }
+  };
   const render = () => rerender?.();
   const notify = (m: string, t: "info" | "warning" | "error" = "info") => { if (ctxRef?.hasUI) ctxRef.ui.notify(m, t); };
   const msg = (customType: string, content: string): SessionBoundaryDraft =>
@@ -132,6 +140,7 @@ export default function (pi: ExtensionAPI) {
     lastCompactFromUs = false;
     pendingInject = undefined;
     scratchSeq = 0;
+    memoryError = undefined;
   }
 
   function findRoot(start: string): string {
@@ -186,11 +195,17 @@ export default function (pi: ExtensionAPI) {
   }
 
   async function refreshInject(ctx: ExtensionContext, tree = false): Promise<void> {
-    const task = safeTask(), project = safeProject();
-    cachedTask = task;
-    const h = S.stateHash(task, project);
-    const content = await resumeText(task, project, tree);
-    pendingInject = content && (tree || content.includes("[task-memory] Resume checks:") || lastKnownHash(ctx) !== h) ? { content, hash: h } : undefined;
+    try {
+      const task = S.loadTaskFile(dir).task, project = S.loadProject(dir);
+      cachedTask = task;
+      const h = S.stateHash(task, project);
+      const content = await resumeText(task, project, tree);
+      pendingInject = content && (tree || content.includes("[task-memory] Resume checks:") || lastKnownHash(ctx) !== h) ? { content, hash: h } : undefined;
+    } catch (err) {
+      const message = `task-memory: failed to load memory: ${(err as Error).message}. Do not assume memory is empty; ask the user to repair it.`;
+      notify(message, "error");
+      pendingInject = { content: message, hash: "memory-error" };
+    }
   }
 
   function trackFiles(args: unknown, kind: "edit" | "read"): void {
@@ -224,8 +239,6 @@ export default function (pi: ExtensionAPI) {
         th = { warn, must };
       }
     } catch (err) { notify(`task-memory: ${(err as Error).message}; using environment defaults`, "error"); }
-    try { S.loadTaskFile(dir); S.loadProject(dir); }
-    catch (err) { notify(`task-memory: ${(err as Error).message}`, "error"); }
     await refreshInject(ctx);
     if (cachedTask) notify(`task-memory: active task — ${S.statusLine(cachedTask)}. Say "continue" or /task resume.`);
     if (ctx.mode === "tui") installWidget(ctx, () => ({
@@ -381,7 +394,14 @@ export default function (pi: ExtensionAPI) {
     const ours = lastCompactFromUs; lastCompactFromUs = false;
     newSegment(); compacting = false; render();
     if (ours) return;
-    const task = safeTask(), project = safeProject();
+    let task: StateTypes.Task | null, project: StateTypes.Project;
+    try { task = S.loadTaskFile(dir).task; project = S.loadProject(dir); }
+    catch (err) {
+      const message = `task-memory: failed to load memory after compaction: ${(err as Error).message}. Do not assume memory is empty; ask the user to repair it.`;
+      notify(message, "error");
+      pi.sendMessage({ customType: "task-memory-state", content: message, display: false }, { deliverAs: running ? "steer" : "nextTurn" });
+      return;
+    }
     const content = injectText(task, project, P.POST_COMPACT_PREFIX);
     if (!content) return;
     pi.sendMessage(
@@ -485,7 +505,9 @@ export default function (pi: ExtensionAPI) {
         ctx.ui.notify(`Thresholds saved: warning ${th.warn}%, mandatory ${th.must}%`);
         return;
       }
-      const task = safeTask(), project = safeProject();
+      let task: StateTypes.Task | null, project: StateTypes.Project;
+      try { task = S.loadTaskFile(dir).task; project = S.loadProject(dir); }
+      catch (err) { ctx.ui.notify(`task-memory: failed to load memory: ${(err as Error).message}`, "error"); return; }
 
       if (sub === "resume") {
         if (!task) { ctx.ui.notify("No active task.", "info"); return; }

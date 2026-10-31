@@ -201,6 +201,19 @@ test("resume detects changed Git state and conversation branch navigation", asyn
   assert.match((await h.emit("before_agent_start"))!.message!.content, /Conversation branch changed/);
 });
 
+test("unreadable memory is reported rather than treated as empty", async () => {
+  const h = harness("tui");
+  await h.emit("session_start");
+  await h.call({ action: "start", title: "T", goal: "G" });
+  fs.writeFileSync(path.join(h.cwd, ".pi", "memory", "task.json"), "{");
+  await h.emit("session_start");
+  assert.match((await h.emit("before_agent_start"))!.message!.content, /failed to load memory/);
+  await h.command("resume");
+  assert.match(h.notifications.at(-1)!, /failed to load memory/);
+  await h.emit("session_compact");
+  assert.match(h.messages.at(-1)!.content, /failed to load memory after compaction/);
+});
+
 test("thinking phase uses a distinct icon", async () => {
   const h = harness("tui");
   await h.emit("session_start");
