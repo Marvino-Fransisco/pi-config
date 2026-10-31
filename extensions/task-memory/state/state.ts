@@ -418,3 +418,10 @@ export function archiveTask(dir: string, task: Task): string {
   writeAtomic(file, task);
   return file;
 }
+export function clearArchive(dir: string): number {
+  const archive = path.join(dir, "archive");
+  if (!fs.existsSync(archive)) return 0;
+  const files = fs.readdirSync(archive, { withFileTypes: true }).filter((f) => f.isFile() && f.name.endsWith(".json"));
+  for (const f of files) fs.rmSync(path.join(archive, f.name));
+  return files.length;
+}

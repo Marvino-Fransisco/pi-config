@@ -537,9 +537,9 @@ export default function (pi: ExtensionAPI) {
 
   // ---------------------------------------------------------------- command
   pi.registerCommand("task", {
-    description: "Show task memory. /task resume | abandon | threshold",
+    description: "Show task memory. /task resume | abandon | clear-archive | threshold",
     getArgumentCompletions: (prefix: string) =>
-      ["resume", "abandon", "threshold", "threshold warning", "threshold mandatory"].flatMap((s) => (s.startsWith(prefix) ? [{ value: s, label: s }] : [])),
+      ["resume", "abandon", "clear-archive", "threshold", "threshold warning", "threshold mandatory"].flatMap((s) => (s.startsWith(prefix) ? [{ value: s, label: s }] : [])),
     handler: async (args, ctx) => {
       ctxRef = ctx;
       const sub = args.trim();
@@ -563,6 +563,12 @@ export default function (pi: ExtensionAPI) {
         else if (lvl === "warn" && handoff === "must") handoff = "boundary";
         render();
         ctx.ui.notify(`Thresholds saved: warning ${th.warn}%, mandatory ${th.must}%`);
+        return;
+      }
+      if (sub === "clear-archive") {
+        if (ctx.hasUI && !(await ctx.ui.confirm("Delete archived tasks?", "Finished and abandoned tasks in .pi/memory/archive will be removed permanently."))) return;
+        try { ctx.ui.notify(`Deleted ${S.clearArchive(dir)} archived task(s).`, "info"); }
+        catch (err) { ctx.ui.notify(`task-memory: failed to clear archive: ${(err as Error).message}`, "error"); }
         return;
       }
       let task: StateTypes.Task | null, project: StateTypes.Project;

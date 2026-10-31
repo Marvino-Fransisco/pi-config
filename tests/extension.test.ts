@@ -328,6 +328,20 @@ test("progress sync detects Git changes and ignores project-only updates", async
   assert.equal(result?.entries?.[0]?.customType, "task-memory-sync");
 });
 
+test("clear-archive deletes archived tasks and keeps the active task", async () => {
+  const h = harness("tui");
+  await h.emit("session_start");
+  await h.call({ action: "start", title: "Old", goal: "G" });
+  await h.call({ action: "finish", evidence: "manual: ok", docs: "none: x" });
+  await h.call({ action: "start", title: "Current", goal: "G" });
+  const archive = path.join(h.cwd, ".pi", "memory", "archive");
+  fs.writeFileSync(path.join(archive, "keep.txt"), "x");
+  await h.command("clear-archive");
+  assert.match(h.notifications.at(-1)!, /Deleted 1 archived task/);
+  assert.deepEqual(fs.readdirSync(archive), ["keep.txt"]);
+  assert.match((await h.call({ action: "show" })).content[0]!.text, /Task: Current/);
+});
+
 test("progress sync is requested once per batch of edits", async () => {
   const h = harness("tui");
   await h.emit("session_start");

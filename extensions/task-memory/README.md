@@ -31,6 +31,7 @@ Pi extension that keeps long-running work resumable across context compaction an
 | `/close` | Close the task or context panel |
 | `/task resume` | Continue the active task |
 | `/task abandon` | Archive the active task as abandoned |
+| `/task clear-archive` | Permanently delete archived tasks (asks for confirmation) |
 | `/task threshold` | Show the current warning and mandatory handoff percentages |
 | `/task threshold warning 20` | Set the warning percentage |
 | `/task threshold mandatory 65` | Set the mandatory handoff percentage |
