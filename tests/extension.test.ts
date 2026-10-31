@@ -175,6 +175,17 @@ test("TUI: warning at the end of a run asks for a handoff; the checkpoint stops 
   assert.equal(fs.existsSync(path.join(h.cwd, ".pi", "memory", "task.json")), false);
 });
 
+test("thinking phase uses a distinct icon", async () => {
+  const h = harness("tui");
+  await h.emit("session_start");
+  await h.emit("agent_start");
+  const first = h.widgetLines()[0]!;
+  assert.match(first.replace(/\x1b\[[\d;]*m/g, ""), /✦ thinking/);
+  await new Promise((resolve) => setTimeout(resolve, 150));
+  assert.notEqual(h.widgetLines()[0]!, first);
+  await h.emit("agent_settled");
+});
+
 test("print mode: no extra turn after the final answer; 40% uses an automatic handoff", async () => {
   const h = harness("print");
   await h.emit("session_start");

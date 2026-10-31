@@ -53,7 +53,7 @@ function kindPhase(k: ToolKind, i: PhaseInput): Phase {
 }
 
 export const PHASE_ICON: Record<Phase, string> = {
-  idle: "○", thinking: "…", planning: "◇", exploring: "◎", coding: "●",
+  idle: "○", thinking: "✦", planning: "◇", exploring: "◎", coding: "●",
   verifying: "◆", handoff: "⇄", compacting: "↻", resuming: "↺",
 };
 

@@ -1,6 +1,6 @@
 # Pi configuration
 
-`extensions/ui/index.ts` registers the custom UI components in `extensions/ui/editor/`, `extensions/ui/footer/`, and `extensions/ui/widget/`. The footer displays a shaded context-usage bar with visual status levels at 25%, 80%, 90%, 98%, and 100%. These levels are visual indicators, not compaction triggers. `extensions/task-memory/` contains the task-memory extension and its separate handoff warnings. Reload Pi with `/reload` after changing extensions.
+`extensions/ui/index.ts` registers the custom UI components in `extensions/ui/editor/`, `extensions/ui/footer/`, and `extensions/ui/widget/`. The footer displays a shaded context-usage bar with visual status levels at 25%, 80%, 90%, 98%, and 100%. These levels are visual indicators, not compaction triggers. `extensions/task-memory/` contains the task-memory extension and its separate handoff warnings. The streaming indicator cycles through eight activity labels with a blue animated star and text; active task-memory phases use the same animated color palette. Reload Pi with `/reload` after changing extensions.
 
 ## Scrolling inside tmux
 

@@ -221,7 +221,11 @@ export default function (pi: ExtensionAPI) {
     refreshInject(ctx); render();
   });
 
-  pi.on("session_shutdown", async () => { notes?.close(); notes = undefined; rerender = undefined; });
+  pi.on("session_shutdown", async () => {
+    running = compacting = resuming = false;
+    render();
+    notes?.close(); notes = undefined; rerender = undefined;
+  });
 
   pi.on("before_agent_start", async () => {
     if (!pendingInject) return;

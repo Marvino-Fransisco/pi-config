@@ -19,7 +19,7 @@ Pi extension that keeps long-running work resumable across context compaction an
 - **Headless runs** (`pi -p`, `--mode json`): no turn is added after the final answer, so the printed answer stays intact. The end-of-run handoff and the progress reminder are skipped; at 40% an automatic handoff is used.
 - **New session**: saved state is loaded silently, with a one-line notice. The agent continues only if your request relates to it, you say "continue", or you run `/task resume`.
 - **Progress sync**: if a run edits files during an active task but never updates it, one short extra turn records progress.
-- **Phase widget** (below the editor): `idle · thinking · planning · exploring · coding · verifying · handoff · compacting · resuming`, with the task title, step progress, and a context warning line.
+- **Phase widget** (below the editor): `idle · thinking · planning · exploring · coding · verifying · handoff · compacting · resuming`, with animated blue active phases, the task title, step progress, and a context warning line.
 
 ## Commands
 
