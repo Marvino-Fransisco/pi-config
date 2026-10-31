@@ -19,7 +19,7 @@ Pi extension that keeps long-running work resumable across context compaction an
   - Pi's own auto-compaction stays on as a safety net. If it fires, the saved task state is re-injected afterwards and may need reconciliation with the summary.
 - **Headless runs** (`pi -p`, `--mode json`): no turn is added after the final answer, so the printed answer stays intact. The end-of-run handoff and the progress reminder are skipped; if a handoff is unavailable at the mandatory threshold, the conversation is retained for Pi's normal compaction.
 - **New session**: saved state is loaded with a one-line notice. The agent continues only if your request relates to it, you say "continue", or you run `/task resume`. Resume checks checkpoint Git HEAD, branch and working-tree status; dirty files require revalidation even when the status is unchanged. After `/tree`, the agent is warned to reconcile disk memory with the conversation branch.
-- **Progress sync**: for an engaged active task, tracked edits and changes detected in Git since the last progress update trigger one short extra turn. Project-only updates do not count as task progress. Pre-existing Git changes are captured as a baseline.
+- **Progress sync**: for an engaged active task, tracked edits and changes detected in Git since the last progress update trigger one short extra turn per batch of changes. Project-only updates do not count as task progress. Pre-existing Git changes are captured as a baseline; the Git fingerprint is the `git status` list plus the size, mtime, ctime and inode of each changed or untracked file.
 - **Memory errors**: failures to read task or project memory are reported to the user and agent instead of being treated as empty memory.
 - **Phase widget** (below the editor): `idle · thinking · planning · exploring · coding · verifying · handoff · compacting · resuming`, with an animated working star, blue active phases, the task title, step progress, and a context warning line.
 
@@ -73,7 +73,7 @@ After a Pi upgrade, update the release path in `tsconfig.json`.
 ## Known limits
 
 - One active task per checkout (git worktrees each get their own). Two sessions in the same checkout: the last write wins.
-- Git-based progress detection is best effort: ignored files and content changes to already-untracked files are not detected by the Git fingerprint. Shell edits are not listed as touched files individually; non-Git directories and failed Git commands cannot use this signal.
+- Git-based progress detection is best effort: ignored files are not detected. Shell edits are not listed as touched files individually; non-Git directories and failed Git commands cannot use this signal.
 - Git status cannot prove dirty file contents are unchanged; resume asks the agent to revalidate them. Checkpoint dirty-file lists are capped at 15 entries.
 - Memory lives on disk, so it does not rewind with `/tree`; navigation warns the agent but does not automatically reconcile state.
 - An intercepted `/compact` may be reported as cancelled before the handoff turn runs.

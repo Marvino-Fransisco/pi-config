@@ -315,14 +315,43 @@ test("progress sync detects Git changes and ignores project-only updates", async
   const h = harness("tui");
   await h.emit("session_start");
   await h.call({ action: "start", title: "T", goal: "G" });
-  h.git.status = " M existing.ts\n";
-  h.git.diff = "original";
+  const file = path.join(h.cwd, "existing.ts");
+  fs.writeFileSync(file, "original");
+  fs.utimesSync(file, 1000, 1000);
+  h.git.status = " M existing.ts\0?? new.ts\0";
   await h.emit("agent_start");
   assert.equal(await h.emit("agent_before_settle", { entries: [], outcome: "completed" }), undefined);
-  h.git.diff = "changed by shell";
+  fs.writeFileSync(file, "changed!");
+  fs.utimesSync(file, 1000, 1000);
   await h.call({ action: "update", project: { notes: ["a convention"] } });
   const result = await h.emit("agent_before_settle", { entries: [], outcome: "completed" });
   assert.equal(result?.entries?.[0]?.customType, "task-memory-sync");
+});
+
+test("progress sync is requested once per batch of edits", async () => {
+  const h = harness("tui");
+  await h.emit("session_start");
+  await h.call({ action: "start", title: "T", goal: "G" });
+  await h.emit("agent_start");
+  await h.emit("tool_execution_start", { toolName: "edit", toolCallId: "edit1", args: { path: "a.ts" } });
+  await h.emit("tool_execution_end", { toolName: "edit", toolCallId: "edit1", isError: false });
+  assert.equal((await h.emit("agent_before_settle", { entries: [], outcome: "completed" }))?.entries?.[0]?.customType, "task-memory-sync");
+  await h.emit("agent_settled");
+  await h.emit("agent_start");
+  assert.equal(await h.emit("agent_before_settle", { entries: [], outcome: "completed" }), undefined);
+});
+
+test("task changes after a checkpoint invalidate its compaction summary", async () => {
+  const h = harness("tui");
+  await h.emit("session_start");
+  await h.call({ action: "start", title: "T", goal: "G", steps: ["a"] });
+  await h.call({ action: "checkpoint", next: "do a" });
+  await h.call({ action: "show" });
+  const compact = { reason: "threshold", preparation: { firstKeptEntryId: "x", tokensBefore: 1 } };
+  assert.ok((await h.emit("session_before_compact", compact) as { compaction?: unknown } | undefined)?.compaction);
+  await h.emit("session_compact_failed");
+  await h.call({ action: "step", id: 1, status: "done", evidence: "manual: ok" });
+  assert.equal(await h.emit("session_before_compact", compact), undefined);
 });
 
 test("project-only updates do not acknowledge tracked edits", async () => {

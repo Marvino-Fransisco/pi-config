@@ -386,7 +386,12 @@ export function loadTaskFile(dir: string): TaskFile {
 export function loadProject(dir: string): Project {
   // SAFETY: project.json is only written by saveProject; merged over emptyProject() defaults.
   const v = readJson(path.join(dir, "project.json")) as unknown as Partial<Project> | undefined;
-  return { ...emptyProject(), ...(v ?? {}), version: 1 };
+  const list = <T>(items: T[] | undefined): T[] => (Array.isArray(items) ? items : []);
+  return {
+    version: 1,
+    decisions: list(v?.decisions), conventions: list(v?.conventions), notes: list(v?.notes),
+    verify: list(v?.verify), map: list(v?.map),
+  };
 }
 
 function ensureDir(dir: string): void {

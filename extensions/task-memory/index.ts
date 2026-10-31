@@ -6,7 +6,7 @@ import * as path from "node:path";
 import { createHash } from "node:crypto";
 import * as S from "./state/state.ts";
 import type * as StateTypes from "./state/state.types.ts";
-import { classifyTool, contextLevel, readThresholds } from "./phase/phase.ts";
+import { classifyTool, contextLevel, readThresholds, toThresholds } from "./phase/phase.ts";
 import type { ToolKind, Thresholds } from "./phase/phase.types.ts";
 import * as P from "./prompts/prompts.ts";
 import { Params } from "./schema/schema.ts";
@@ -58,6 +58,7 @@ export default function (pi: ExtensionAPI) {
   let taskEngaged = false;
   let gitBaseline: string | undefined;
   let memoryError: string | undefined;
+  let taskMtime: number | undefined | null = null;
 
   let handoff: Handoff = "none";
   let terminateAfter = false;
@@ -74,7 +75,9 @@ export default function (pi: ExtensionAPI) {
 
   const now = () => new Date().toISOString();
   const safeTask = () => {
-    try { const task = S.loadTaskFile(dir).task; memoryError = undefined; return task; }
+    const mtime = fs.statSync(path.join(dir, "task.json"), { throwIfNoEntry: false })?.mtimeMs;
+    if (mtime === taskMtime && memoryError === undefined) return cachedTask;
+    try { const task = S.loadTaskFile(dir).task; memoryError = undefined; taskMtime = mtime; return task; }
     catch (err) {
       const message = (err as Error).message;
       if (message !== memoryError) notify(`task-memory: ${message}`, "error");
@@ -152,6 +155,7 @@ export default function (pi: ExtensionAPI) {
     scratchSeq = 0;
     gitBaseline = undefined;
     memoryError = undefined;
+    taskMtime = null;
   }
 
   function findRoot(start: string): string {
@@ -166,9 +170,11 @@ export default function (pi: ExtensionAPI) {
 
   async function gitInfo(): Promise<StateTypes.GitInfo> {
     try {
-      const h = await pi.exec("git", ["-C", root, "rev-parse", "--short", "HEAD"]);
-      const b = await pi.exec("git", ["-C", root, "branch", "--show-current"]);
-      const s = await pi.exec("git", ["-C", root, "status", "--porcelain"]);
+      const [h, b, s] = await Promise.all([
+        pi.exec("git", ["-C", root, "rev-parse", "--short", "HEAD"]),
+        pi.exec("git", ["-C", root, "branch", "--show-current"]),
+        pi.exec("git", ["-C", root, "status", "--porcelain"]),
+      ]);
       const dirty = s.code === 0
         ? s.stdout.split("\n").map((l) => l.slice(3).trim()).filter((f) => f && !f.startsWith(".pi/memory")).slice(0, 15)
         : undefined;
@@ -178,11 +184,19 @@ export default function (pi: ExtensionAPI) {
 
   async function gitFingerprint(): Promise<string | undefined> {
     try {
-      const status = await pi.exec("git", ["-C", root, "status", "--porcelain", "--untracked-files=all"], { timeout: 5000 });
-      const diff = await pi.exec("git", ["-C", root, "diff", "--no-ext-diff", "--binary", "HEAD"], { timeout: 5000 });
-      if (status.killed || diff.killed || status.code !== 0 || diff.code !== 0) return undefined;
-      const lines = status.stdout.split("\n").filter((line) => !line.slice(3).startsWith(".pi/memory/"));
-      return createHash("sha256").update(lines.join("\n")).update("\0").update(diff.stdout).digest("hex");
+      const status = await pi.exec("git", ["-C", root, "status", "--porcelain", "-z", "--untracked-files=all"], { timeout: 5000 });
+      if (status.killed || status.code !== 0) return undefined;
+      const hash = createHash("sha256");
+      const fields = status.stdout.split("\0");
+      for (let i = 0; i < fields.length; i++) {
+        const entry = fields[i]!;
+        if (/^[RC]/.test(entry)) i++;
+        const file = entry.slice(3);
+        if (!file || file.startsWith(".pi/memory/")) continue;
+        const stat = fs.statSync(path.join(root, file), { throwIfNoEntry: false });
+        hash.update(`${entry}\0${stat?.mtimeMs ?? ""}\0${stat?.ctimeMs ?? ""}\0${stat?.ino ?? ""}\0${stat?.size ?? ""}\0`);
+      }
+      return hash.digest("hex");
     } catch { return undefined; }
   }
 
@@ -254,10 +268,9 @@ export default function (pi: ExtensionAPI) {
     try {
       const settings = S.loadThresholdSettings(dir);
       if (settings) {
-        const { warn, must } = settings;
-        if (typeof warn !== "number" || typeof must !== "number" || !Number.isFinite(warn) || !Number.isFinite(must) || warn <= 0 || must >= 100 || warn >= must)
-          throw new Error("invalid thresholds.json: expected 0 < warn < must < 100");
-        th = { warn, must };
+        const saved = toThresholds(settings.warn, settings.must);
+        if (!saved) throw new Error("invalid thresholds.json: expected 0 < warn < must < 100");
+        th = saved;
       }
     } catch (err) { notify(`task-memory: ${(err as Error).message}; using environment defaults`, "error"); }
     await refreshInject(ctx);
@@ -401,6 +414,7 @@ export default function (pi: ExtensionAPI) {
     }
     if (taskEngaged && cachedTask && !syncSent && (editSeq > syncedSeq || runEdited.has("Git working tree (inspect changes)"))) {
       syncSent = true;
+      syncedSeq = editSeq;
       return { entries: [...e.entries, msg("task-memory-sync", P.SYNC_MSG([...runEdited]))], continue: true };
     }
   });
@@ -484,6 +498,7 @@ export default function (pi: ExtensionAPI) {
       const h = S.stateHash(file.task, project);
       if (ck?.compact) { compactNow = { summary: ck.summary, hash: h, seq: ck.seq }; compacting = true; }
       else if (ck) fresh = { summary: ck.summary, hash: h, seq: ck.seq };
+      else if (changed || saveProject) fresh = undefined;
       const recordsProgress = p.action === "checkpoint" || p.action === "finish" ||
         (p.action === "step" && (p.status === "done" || p.status === "skipped")) ||
         (p.action === "update" && !!(p.next || p.decisions?.length || p.issues?.length || p.resolve?.length || p.notes?.length));
@@ -572,7 +587,7 @@ export default function (pi: ExtensionAPI) {
         const file = S.loadTaskFile(dir);
         const done = S.finishTask(file, { abandon: true, reason: "abandoned by user" }, now());
         S.archiveTask(dir, done); S.saveTaskFile(dir, file);
-        cachedTask = null; pendingInject = undefined; render();
+        cachedTask = null; pendingInject = undefined; fresh = undefined; render();
         pi.sendMessage({
           customType: "task-memory-state", content: `[task-memory] The user abandoned task "${done.title}". Ignore its saved state.`,
           display: false, details: { hash: S.stateHash(null, project) },

@@ -7,7 +7,8 @@ const VERIFY = new Set(["lens_diagnostics"]);
 const WEB = new Set(["web_search", "fetch_content", "get_search_content", "source_check"]);
 
 const VERIFY_RE = /\b(test|tests|vitest|jest|pytest|mocha|tsc|typecheck|lint|eslint|biome|ruff|mypy|cargo (test|check|clippy)|go (test|vet)|build|make check)\b/;
-const READONLY_RE = /^\s*(ls|cat|head|tail|wc|grep|rg|find|fd|tree|pwd|echo|git (status|log|diff|show|branch))\b/;
+const READONLY_RE = /^\s*(cd|ls|cat|head|tail|wc|grep|rg|find|fd|tree|pwd|echo|git (status|log|diff|show|branch))\b/;
+const SHELL_EDIT_RE = /^\s*(sed -i|perl -p?i|mv|cp|rm|mkdir|touch|tee|git (apply|checkout|restore|mv|rm|commit|stash))\b/;
 
 export function classifyTool(name: string, args: unknown): ToolKind {
   const input = args as ToolArguments | null | undefined;
@@ -18,9 +19,11 @@ export function classifyTool(name: string, args: unknown): ToolKind {
   if (VERIFY.has(name)) return "verify";
   if (WEB.has(name)) return "web";
   if (name === "bash") {
-    const cmd = String(input?.command ?? "");
-    if (READONLY_RE.test(cmd) && !VERIFY_RE.test(cmd)) return "read";
-    if (VERIFY_RE.test(cmd)) return "verify";
+    const segments = String(input?.command ?? "").split(/&&|\|\||[;|\n]/).filter((s) => s.trim());
+    const acting = segments.filter((s) => !READONLY_RE.test(s));
+    if (acting.some((s) => VERIFY_RE.test(s))) return "verify";
+    if (acting.some((s) => SHELL_EDIT_RE.test(s))) return "edit";
+    if (segments.length && !acting.length) return "read";
     return "other";
   }
   return "other";
@@ -61,14 +64,19 @@ export function readThresholds(env: Record<string, string | undefined>): Thresho
   const num = (v: string | undefined, d: number) => { const n = Number(v); return Number.isFinite(n) && n > 0 && n < 100 ? n : d; };
   const warn = num(env.TASK_MEMORY_WARN_PCT, 50);
   const must = num(env.TASK_MEMORY_MUST_PCT, 75);
-  return warn < must ? { warn, must } : { warn: 50, must: 75 };
+  return toThresholds(warn, must) ?? { warn: 50, must: 75 };
+}
+
+export function toThresholds(warn: unknown, must: unknown): Thresholds | undefined {
+  const pct = (n: unknown): n is number => typeof n === "number" && Number.isFinite(n) && n > 0 && n < 100;
+  return pct(warn) && pct(must) && warn < must ? { warn, must } : undefined;
 }
 
 /** baseline = context % measured right after our last compaction; keeps thresholds above it so we don't re-trigger instantly. */
 export function contextLevel(pct: number | null | undefined, th: Thresholds, baseline?: number): Level {
   if (pct === null || pct === undefined || !Number.isFinite(pct)) return "unknown";
   const warn = baseline === undefined ? th.warn : Math.max(th.warn, baseline + 5);
-  const must = Math.max(th.must, warn + th.must - th.warn);
+  const must = Math.min(99, Math.max(th.must, warn + th.must - th.warn));
   if (pct >= must) return "must";
   if (pct >= warn) return "warn";
   return "ok";

@@ -68,6 +68,9 @@ test("persistence roundtrip + gitignore + bad json", () => {
   S.saveTaskFile(dir, f);
   assert.equal(fs.readFileSync(path.join(dir, ".gitignore"), "utf8"), "*\n");
   assert.equal(S.loadTaskFile(dir).task?.title, "T");
+  fs.writeFileSync(path.join(dir, "project.json"), JSON.stringify({ decisions: null, map: [{ path: "a", purpose: "b" }] }));
+  assert.deepEqual(S.loadProject(dir).decisions, []);
+  assert.equal(S.loadProject(dir).map.length, 1);
   fs.writeFileSync(path.join(dir, "project.json"), "{bad");
   assert.throws(() => S.loadProject(dir), S.MemoryError);
   fs.rmSync(dir, { recursive: true, force: true });
@@ -76,6 +79,10 @@ test("persistence roundtrip + gitignore + bad json", () => {
 test("phase + thresholds", () => {
   assert.equal(classifyTool("bash", { command: "npm test" }), "verify");
   assert.equal(classifyTool("bash", { command: "ls -la" }), "read");
+  assert.equal(classifyTool("bash", { command: "cat test.txt | grep build" }), "read");
+  assert.equal(classifyTool("bash", { command: "cd app && npm test" }), "verify");
+  assert.equal(classifyTool("bash", { command: "sed -i 's/a/b/' x.ts" }), "edit");
+  assert.equal(classifyTool("bash", { command: "node script.js" }), "other");
   assert.equal(classifyTool("edit", {}), "edit");
   assert.equal(classifyTool("task", { action: "checkpoint" }), "checkpoint");
   const base = { running: true, compacting: false, handoff: false, resuming: false, active: [], hasTask: true, stepDoing: false };
@@ -89,6 +96,7 @@ test("phase + thresholds", () => {
   assert.equal(contextLevel(75, th), "must");
   assert.equal(contextLevel(52, th, 48), "ok");
   assert.equal(contextLevel(23, { warn: 20, must: 23 }), "must");
+  assert.equal(contextLevel(99, th, 80), "must");
   assert.deepEqual(readThresholds({ TASK_MEMORY_WARN_PCT: "20", TASK_MEMORY_MUST_PCT: "65" }), { warn: 20, must: 65 });
   assert.deepEqual(readThresholds({ TASK_MEMORY_WARN_PCT: "99", TASK_MEMORY_MUST_PCT: "20" }), th);
   assert.equal(contextLevel(null, th), "unknown");
