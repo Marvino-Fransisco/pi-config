@@ -59,17 +59,16 @@ export const PHASE_ICON: Record<Phase, string> = {
 
 export function readThresholds(env: Record<string, string | undefined>): Thresholds {
   const num = (v: string | undefined, d: number) => { const n = Number(v); return Number.isFinite(n) && n > 0 && n < 100 ? n : d; };
-  const warn = num(env.TASK_MEMORY_WARN_PCT, 25);
-  let must = num(env.TASK_MEMORY_MUST_PCT, 40);
-  if (must <= warn) must = Math.min(95, warn + 10);
-  return { warn, must };
+  const warn = num(env.TASK_MEMORY_WARN_PCT, 50);
+  const must = num(env.TASK_MEMORY_MUST_PCT, 75);
+  return warn < must ? { warn, must } : { warn: 50, must: 75 };
 }
 
 /** baseline = context % measured right after our last compaction; keeps thresholds above it so we don't re-trigger instantly. */
 export function contextLevel(pct: number | null | undefined, th: Thresholds, baseline?: number): Level {
   if (pct === null || pct === undefined || !Number.isFinite(pct)) return "unknown";
   const warn = baseline === undefined ? th.warn : Math.max(th.warn, baseline + 5);
-  const must = Math.max(th.must, warn + 5);
+  const must = Math.max(th.must, warn + th.must - th.warn);
   if (pct >= must) return "must";
   if (pct >= warn) return "warn";
   return "ok";

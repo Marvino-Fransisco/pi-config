@@ -46,6 +46,7 @@ function harness(mode: "tui" | "print") {
   dirs.push(cwd);
   fs.mkdirSync(path.join(cwd, ".git"));
   const usage = { percent: 5 as number | null };
+  const notifications: string[] = [];
   const pi = {
     on: (name: string, h: Handler) => { handlers.set(name, [...(handlers.get(name) ?? []), h]); return () => {}; },
     registerTool: (t: Tool) => { tool = t; },
@@ -59,7 +60,7 @@ function harness(mode: "tui" | "print") {
   };
   const ctx = {
     cwd, mode, hasUI: mode === "tui",
-    ui: { notify: () => {}, setWidget: (_name: string, factory: (tui: unknown, theme: unknown) => { render: (width: number) => string[] }) => {
+    ui: { notify: (message: string) => { notifications.push(message); }, setWidget: (_name: string, factory: (tui: unknown, theme: unknown) => { render: (width: number) => string[] }) => {
       widget = factory(tui, { fg: (_color: string, text: string) => text });
     }, confirm: async () => true },
     isIdle: () => true,
@@ -74,7 +75,7 @@ function harness(mode: "tui" | "print") {
     return r as Result;
   };
   const call = (args: Record<string, unknown>) => tool!.execute("id", tool!.prepareArguments(args), undefined, undefined, ctx);
-  return { emit, call, usage, cwd, terminal, widgetLines: () => widget!.render(120), command: (args: string) => command!.handler(args, ctx), panel: () => panel, focus: () => shortcut!.handler(ctx), isFocused: () => focused, visible: (width: number, height: number) => visible!(width, height) };
+  return { emit, call, usage, cwd, terminal, notifications, widgetLines: () => widget!.render(120), command: (args: string) => command!.handler(args, ctx), panel: () => panel, focus: () => shortcut!.handler(ctx), isFocused: () => focused, visible: (width: number, height: number) => visible!(width, height) };
 }
 
 test("widget reflects task changes made outside this session", async () => {
@@ -130,11 +131,11 @@ test("task tool persists and archives a completed task", async () => {
 const busy = { entries: [], toolResults: [{}], outcome: "completed" };
 const ending = { entries: [], toolResults: [], outcome: "completed" };
 
-test("40%: mandatory handoff blocks other tools; automatic handoff after 3 ignored turns", async () => {
+test("75%: mandatory handoff blocks other tools; automatic handoff after 3 ignored turns", async () => {
   const h = harness("tui");
   await h.emit("session_start");
   await h.call({ action: "start", title: "T", goal: "G", steps: ["a", "b"] });
-  h.usage.percent = 45;
+  h.usage.percent = 80;
   const r1 = await h.emit("turn_end", busy);
   assert.equal(r1?.entries?.[0]?.customType, "task-memory-must");
   assert.equal(r1?.continue, true);
@@ -152,7 +153,7 @@ test("checkpoint without `action` is inferred; mandatory handoff compacts mid-ru
   const h = harness("tui");
   await h.emit("session_start");
   await h.call({ action: "start", title: "T", goal: "G", steps: ["a"] });
-  h.usage.percent = 45;
+  h.usage.percent = 80;
   await h.emit("turn_end", busy);
   const res = await h.call({ next: "do a", readNow: [{ path: "x.ts", reason: "r" }], compact: true });
   assert.equal(res.terminate, false);
@@ -165,7 +166,7 @@ test("checkpoint without `action` is inferred; mandatory handoff compacts mid-ru
 test("TUI: warning at the end of a run asks for a handoff; the checkpoint stops the run; no task is created", async () => {
   const h = harness("tui");
   await h.emit("session_start");
-  h.usage.percent = 30;
+  h.usage.percent = 55;
   assert.equal(await h.emit("turn_end", ending), undefined);
   const s = await h.emit("agent_before_settle", { entries: [], outcome: "completed" });
   assert.equal(s?.entries?.[0]?.customType, "task-memory-handoff");
@@ -186,14 +187,34 @@ test("thinking phase uses a distinct icon", async () => {
   await h.emit("agent_settled");
 });
 
-test("print mode: no extra turn after the final answer; 40% uses an automatic handoff", async () => {
+test("threshold command validates, persists and applies independent values", async () => {
+  const h = harness("tui");
+  await h.emit("session_start");
+  await h.command("threshold");
+  assert.match(h.notifications.at(-1)!, /warning 50%, mandatory 75%/);
+  await h.command("threshold warning 20");
+  await h.command("threshold mandatory 65");
+  await h.command("threshold warning 70");
+  assert.match(h.notifications.at(-1)!, /lower than mandatory/);
+  await h.command("threshold must nope");
+  assert.match(h.notifications.at(-1)!, /Usage/);
+  await h.emit("session_start");
+  await h.command("threshold");
+  assert.match(h.notifications.at(-1)!, /warning 20%, mandatory 65%/);
+  h.usage.percent = 20;
+  assert.equal((await h.emit("turn_end", busy))?.entries?.[0]?.customType, "task-memory-warn");
+  h.usage.percent = 65;
+  assert.equal((await h.emit("turn_end", busy))?.entries?.[0]?.customType, "task-memory-must");
+});
+
+test("print mode: no extra turn after the final answer; 75% uses an automatic handoff", async () => {
   const h = harness("print");
   await h.emit("session_start");
-  h.usage.percent = 30;
+  h.usage.percent = 55;
   assert.equal(await h.emit("turn_end", ending), undefined);
   assert.equal(await h.emit("agent_before_settle", { entries: [], outcome: "completed" }), undefined);
   await h.emit("agent_settled");
-  h.usage.percent = 45;
+  h.usage.percent = 80;
   const r = await h.emit("turn_end", ending);
   assert.equal(r?.entries?.[0]?.type, "compaction");
   assert.equal(r?.continue, undefined);

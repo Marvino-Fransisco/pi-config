@@ -401,6 +401,9 @@ function writeAtomic(file: string, data: unknown): void {
   fs.renameSync(tmp, file);
 }
 
+export function loadThresholdSettings(dir: string): Json | undefined { return readJson(path.join(dir, "thresholds.json")); }
+export function saveThresholdSettings(dir: string, settings: { warn: number; must: number }): void { ensureDir(dir); writeAtomic(path.join(dir, "thresholds.json"), settings); }
+
 export function saveTaskFile(dir: string, f: TaskFile): void { ensureDir(dir); writeAtomic(path.join(dir, "task.json"), f); }
 export function saveProject(dir: string, p: Project): void { ensureDir(dir); writeAtomic(path.join(dir, "project.json"), p); }
 export function archiveTask(dir: string, task: Task): string {

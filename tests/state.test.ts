@@ -84,10 +84,13 @@ test("phase + thresholds", () => {
   assert.equal(derivePhase({ ...base, compacting: true }), "compacting");
   assert.equal(derivePhase(base), "planning");
   const th = readThresholds({});
-  assert.deepEqual(th, { warn: 25, must: 40 });
-  assert.equal(contextLevel(30, th), "warn");
-  assert.equal(contextLevel(41, th), "must");
-  assert.equal(contextLevel(30, th, 28), "ok");
+  assert.deepEqual(th, { warn: 50, must: 75 });
+  assert.equal(contextLevel(55, th), "warn");
+  assert.equal(contextLevel(75, th), "must");
+  assert.equal(contextLevel(52, th, 48), "ok");
+  assert.equal(contextLevel(23, { warn: 20, must: 23 }), "must");
+  assert.deepEqual(readThresholds({ TASK_MEMORY_WARN_PCT: "20", TASK_MEMORY_MUST_PCT: "65" }), { warn: 20, must: 65 });
+  assert.deepEqual(readThresholds({ TASK_MEMORY_WARN_PCT: "99", TASK_MEMORY_MUST_PCT: "20" }), th);
   assert.equal(contextLevel(null, th), "unknown");
 });
 

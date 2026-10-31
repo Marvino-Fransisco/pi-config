@@ -191,6 +191,15 @@ export default function (pi: ExtensionAPI) {
     root = findRoot(ctx.cwd);
     dir = path.join(root, ".pi", "memory");
     th = readThresholds(process.env);
+    try {
+      const settings = S.loadThresholdSettings(dir);
+      if (settings) {
+        const { warn, must } = settings;
+        if (typeof warn !== "number" || typeof must !== "number" || !Number.isFinite(warn) || !Number.isFinite(must) || warn <= 0 || must >= 100 || warn >= must)
+          throw new Error("invalid thresholds.json: expected 0 < warn < must < 100");
+        th = { warn, must };
+      }
+    } catch (err) { notify(`task-memory: ${(err as Error).message}; using environment defaults`, "error"); }
     try { S.loadTaskFile(dir); S.loadProject(dir); }
     catch (err) { notify(`task-memory: ${(err as Error).message}`, "error"); }
     refreshInject(ctx);
@@ -424,12 +433,34 @@ export default function (pi: ExtensionAPI) {
 
   // ---------------------------------------------------------------- command
   pi.registerCommand("task", {
-    description: "Show task memory. /task resume | /task abandon",
+    description: "Show task memory. /task resume | abandon | threshold",
     getArgumentCompletions: (prefix: string) =>
-      ["resume", "abandon"].flatMap((s) => (s.startsWith(prefix) ? [{ value: s, label: s }] : [])),
+      ["resume", "abandon", "threshold", "threshold warning", "threshold mandatory"].flatMap((s) => (s.startsWith(prefix) ? [{ value: s, label: s }] : [])),
     handler: async (args, ctx) => {
       ctxRef = ctx;
       const sub = args.trim();
+      if (sub === "threshold" || sub.startsWith("threshold ")) {
+        const parts = sub.split(/\s+/);
+        if (parts.length === 1) { ctx.ui.notify(`Thresholds: warning ${th.warn}%, mandatory ${th.must}%`); return; }
+        let key = parts[1];
+        if (key === "warning") key = "warn";
+        if (key === "mandatory" || key === "cutoff") key = "must";
+        const value = Number(parts[2]);
+        if (parts.length !== 3 || (key !== "warn" && key !== "must") || !Number.isFinite(value) || value <= 0 || value >= 100) {
+          ctx.ui.notify("Usage: /task threshold warning|mandatory <percent> (0 < warning < mandatory < 100)", "error"); return;
+        }
+        const next = { ...th, [key]: value };
+        if (next.warn >= next.must) { ctx.ui.notify("Warning threshold must be lower than mandatory threshold.", "error"); return; }
+        try { S.saveThresholdSettings(dir, next); }
+        catch (err) { ctx.ui.notify(`task-memory: ${(err as Error).message}`, "error"); return; }
+        th = next;
+        const lvl = level(ctx).lvl;
+        if (lvl === "ok") { warned = false; if (handoff === "boundary" || handoff === "must") handoff = "none"; }
+        else if (lvl === "warn" && handoff === "must") handoff = "boundary";
+        render();
+        ctx.ui.notify(`Thresholds saved: warning ${th.warn}%, mandatory ${th.must}%`);
+        return;
+      }
       const task = safeTask(), project = safeProject();
 
       if (sub === "resume") {
