@@ -2,6 +2,8 @@
 import { Type } from "typebox";
 
 export const StringEnum = (values) => Type.Union(values.map((v) => Type.Literal(v)));
+export const estimateTokens = (message) => Math.ceil(JSON.stringify(message.content ?? message.summary ?? "").length / 4);
+export const DEFAULT_COMPACTION_SETTINGS = { enabled: true, reserveTokens: 16384, keepRecentTokens: 20000 };
 
 export function findCutPoint(_entries, startIndex) {
   return { firstKeptEntryIndex: startIndex, turnStartIndex: -1, isSplitTurn: false };

@@ -5,6 +5,7 @@ import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 import extension from "../extensions/task-memory/index.ts";
+import { registerContextCommand } from "../extensions/ui/context.ts";
 
 type Handler = (event: unknown, ctx: unknown) => unknown;
 type Entry = { type: string; customType?: string; details?: Record<string, unknown> };
@@ -23,6 +24,7 @@ function harness(mode: "tui" | "print") {
   let tool: Tool | undefined;
   let widget: { render: (width: number) => string[] } | undefined;
   let command: { handler: (args: string, ctx: unknown) => Promise<void> } | undefined;
+  let closeCommand: typeof command;
   let panel: { render: (width: number) => string[]; handleInput: (data: string) => void; handleMouse: (event: { type: string; button: string; wheelDelta?: number }) => { handled?: boolean; focus?: boolean } | undefined } | undefined;
   let shortcut: { handler: (ctx: unknown) => Promise<void> } | undefined;
   let focused = false;
@@ -47,13 +49,19 @@ function harness(mode: "tui" | "print") {
   fs.mkdirSync(path.join(cwd, ".git"));
   const usage = { percent: 5 as number | null };
   const notifications: string[] = [];
+  const listeners = new Map<string, Array<(data: any) => void>>();
+  const events = {
+    on: (name: string, handler: (data: any) => void) => { listeners.set(name, [...(listeners.get(name) ?? []), handler]); return () => {}; },
+    emit: (name: string, data: unknown) => { for (const handler of listeners.get(name) ?? []) handler(data); },
+  };
   const git = { head: "abc123", branch: "main", status: "", diff: "" };
   const messages: Array<{ content: string }> = [];
   const pi = {
+    events,
     on: (name: string, h: Handler) => { handlers.set(name, [...(handlers.get(name) ?? []), h]); return () => {}; },
     registerTool: (t: Tool) => { tool = t; },
     registerMessageRenderer: () => {},
-    registerCommand: (_name: string, c: typeof command) => { command = c; },
+    registerCommand: (name: string, c: typeof command) => { if (name === "close") closeCommand = c; else if (name === "task") command = c; },
     registerShortcut: (_key: string, s: typeof shortcut) => { shortcut = s; },
     exec: async (_cmd: string, args: string[]) => ({ code: 0, stdout: args.includes("rev-parse") ? git.head : args.includes("branch") ? git.branch : args.includes("diff") ? git.diff : git.status, stderr: "", killed: false }),
     getSettings: () => ({}),
@@ -66,9 +74,11 @@ function harness(mode: "tui" | "print") {
       widget = factory(tui, { fg: (_color: string, text: string) => text });
     }, confirm: async () => true },
     isIdle: () => true,
-    sessionManager: { getBranch: () => [] },
+    sessionManager: { getBranch: () => [], buildSessionProjection: () => ({ entries: [] }) },
+    getSystemPrompt: () => "system",
     getContextUsage: () => ({ tokens: null, contextWindow: 200000, percent: usage.percent }),
-    model: { contextWindow: 200000 },
+    model: { id: "test-model", reasoning: true, contextWindow: 200000 },
+    thinkingLevel: "medium",
   };
   extension(pi as never);
   const emit = async (name: string, event: Record<string, unknown> = {}): Promise<Result> => {
@@ -77,7 +87,7 @@ function harness(mode: "tui" | "print") {
     return r as Result;
   };
   const call = (args: Record<string, unknown>) => tool!.execute("id", tool!.prepareArguments(args), undefined, undefined, ctx);
-  return { emit, call, usage, cwd, terminal, notifications, git, messages, widgetLines: () => widget!.render(120), command: (args: string) => command!.handler(args, ctx), panel: () => panel, focus: () => shortcut!.handler(ctx), isFocused: () => focused, visible: (width: number, height: number) => visible!(width, height) };
+  return { emit, call, usage, cwd, terminal, notifications, git, messages, events, ctx, widgetLines: () => widget!.render(120), command: (args: string) => command!.handler(args, ctx), close: () => closeCommand!.handler("", ctx), panel: () => panel, focus: () => shortcut!.handler(ctx), isFocused: () => focused, visible: (width: number, height: number) => visible!(width, height) };
 }
 
 test("widget reflects task changes made outside this session", async () => {
@@ -97,8 +107,10 @@ test("task notes stay open, update from disk, scroll and release focus", async (
   await h.command("");
   const rows = h.panel()!.render(50);
   assert.match(rows.join("\n"), /Panel task/);
-  assert.ok(rows.every((row) => [...row].length === 50));
-  assert.ok(rows.slice(1, -1).every((row) => row.startsWith("┃") && row.endsWith("┃")));
+  const plainRows = rows.map((row) => row.replace(/\x1b\[[\d;]*m/g, ""));
+  assert.ok(plainRows.every((row) => [...row].length === 50));
+  assert.ok(plainRows.slice(1, -1).every((row) => row.startsWith("┃") && row.endsWith("┃")));
+  assert.ok(rows.every((row) => row.startsWith("\x1b[38;2;90;175;255m")));
   assert.deepEqual(h.panel()!.handleMouse({ type: "press", button: "left" }), { handled: true, focus: true });
   assert.equal(h.isFocused(), false);
   assert.equal(h.visible(79, 30), false);
@@ -116,6 +128,62 @@ test("task notes stay open, update from disk, scroll and release focus", async (
   assert.match(h.panel()!.render(50).join("\n"), /No active task/);
   await h.command("");
   assert.equal(h.panel(), undefined);
+  await h.emit("session_shutdown");
+});
+
+test("shared panel switches tabs without blocking the editor", async () => {
+  const h = harness("tui");
+  h.events.on("ui:context:read", (request) => { request.lines = ["Context usage", "● Tool results"]; });
+  await h.emit("session_start");
+  const request = { tab: "context", handled: false };
+  h.events.emit("task-memory:panel:open", request);
+  assert.equal(request.handled, true);
+  assert.match(h.panel()!.render(50).join("\n"), /Context usage/);
+  await h.focus();
+  h.panel()!.handleInput("h");
+  assert.match(h.panel()!.render(50).join("\n"), /No active task/);
+  h.panel()!.handleInput("right");
+  assert.match(h.panel()!.render(50).join("\n"), /Context usage/);
+  h.panel()!.handleInput("escape");
+  assert.equal(h.isFocused(), false);
+  h.terminal.columns = 70;
+  const smallRequest = { tab: "context", handled: false };
+  h.events.emit("task-memory:panel:open", smallRequest);
+  assert.equal(smallRequest.handled, false);
+  await h.emit("session_shutdown");
+});
+
+test("context command opens the real shared panel and provides context data", async () => {
+  const h = harness("tui");
+  let command: any;
+  registerContextCommand({ events: h.events, registerCommand: (_name: string, value: unknown) => { command = value; } } as never);
+  await h.emit("session_start");
+  await command.handler("", h.ctx);
+  assert.match(h.panel()!.render(50).join("\n"), /Context usage/);
+  await command.handler("", h.ctx);
+  assert.equal(h.panel(), undefined);
+  await h.command("");
+  assert.match(h.panel()!.render(50).join("\n"), /No active task/);
+  await command.handler("", h.ctx);
+  assert.match(h.panel()!.render(50).join("\n"), /Context usage/);
+  await h.close();
+  assert.equal(h.panel(), undefined);
+  await h.close();
+  await h.command("");
+  await h.close();
+  assert.equal(h.panel(), undefined);
+  await h.emit("session_shutdown");
+});
+
+test("phase and model share a row when the UI footer is available", async () => {
+  const h = harness("tui");
+  h.events.on("ui:footer:available", (request) => { request.available = true; });
+  await h.emit("session_start");
+  const row = h.widgetLines()[0]!.replace(/\x1b\[[\d;]*m/g, "");
+  assert.match(row, /idle.*test-model • medium/);
+  const request = { available: false };
+  h.events.emit("task-memory:footer:available", request);
+  assert.equal(request.available, true);
   await h.emit("session_shutdown");
 });
 
@@ -246,7 +314,12 @@ test("thinking phase uses a distinct icon", async () => {
   const first = h.widgetLines()[0]!;
   assert.match(first.replace(/\x1b\[[\d;]*m/g, ""), /✦ thinking/);
   await new Promise((resolve) => setTimeout(resolve, 150));
-  assert.notEqual(h.widgetLines()[0]!, first);
+  const second = h.widgetLines()[0]!;
+  const icon = "\x1b[38;2;90;175;255m✦\x1b[39m ";
+  assert.ok(first.startsWith(icon) && second.startsWith(icon));
+  assert.notEqual(second, first);
+  await h.emit("tool_execution_start", { toolName: "edit", toolCallId: "icon-edit", args: { path: "a.ts" } });
+  assert.ok(h.widgetLines()[0]!.startsWith("\x1b[38;2;90;175;255m●\x1b[39m "));
   await h.emit("agent_settled");
 });
 

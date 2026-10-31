@@ -1,7 +1,7 @@
 import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
 
-const WORDS = ["Working", "Thinking", "Exploring", "Crafting", "Solving", "Building", "Refining", "Connecting"];
-const STARS = ["✳", "✱", "✲", "✻", "✼", "✽", "✻", "✲"];
+const WORDS = ["Stargazing", "Wandering", "Weaving", "Unfolding", "Navigating", "Gathering", "Illuminating", "Daydreaming"];
+const STARS = ["·", "∙", "⋅", "∗", "✢", "✣", "✤", "✥", "✳", "✺", "❄", "✺", "✳", "✥", "✤", "✣", "✢", "∗", "⋅", "∙"];
 
 export function blueWave(text: string, frame: number): string {
 	return [...text].map((char, index) => {
@@ -18,7 +18,7 @@ export function workingFrame(frame: number): string {
 
 export function installWorkingIndicator(ctx: ExtensionContext): void {
 	ctx.ui.setWorkingIndicator({
-		frames: Array.from({ length: 48 }, (_, frame) => blueWave(STARS[frame % STARS.length]!, frame)),
+		frames: Array.from({ length: STARS.length * 3 }, (_, frame) => `\x1b[38;2;90;175;255m${STARS[Math.floor(frame / 3)]!}\x1b[39m`),
 		intervalMs: 120,
 	});
 }

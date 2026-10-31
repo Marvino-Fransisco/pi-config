@@ -1,14 +1,11 @@
-import type { ExtensionContext, Theme, ThemeColor } from "@earendil-works/pi-coding-agent";
-import { truncateToWidth, type TUI } from "@earendil-works/pi-tui";
+import type { ExtensionContext, Theme } from "@earendil-works/pi-coding-agent";
+import { truncateToWidth, visibleWidth, type TUI } from "@earendil-works/pi-tui";
 import { contextLevel, derivePhase, PHASE_ICON } from "../phase/phase.ts";
-import type { Phase } from "../phase/phase.types.ts";
 import type { WidgetState } from "./ui.types.ts";
 import { statusLine } from "../state/state.ts";
 
-const PHASE_COLOR: Record<Phase, ThemeColor> = {
-  idle: "dim", thinking: "muted", planning: "accent", exploring: "accent", coding: "success",
-  verifying: "warning", handoff: "warning", compacting: "warning", resuming: "accent",
-};
+const BLUE = "\x1b[38;2;90;175;255m";
+const RESET = "\x1b[39m";
 
 function animatePhase(text: string, frame: number): string {
   return [...text].map((char, index) => {
@@ -22,6 +19,7 @@ export function installWidget(
   getState: () => WidgetState,
   setRerender: (callback: (() => void) | undefined) => void,
   onReady: (tui: TUI, theme: Theme) => void,
+  getModel: () => string | undefined = () => undefined,
 ): void {
   ctx.ui.setWidget("task-memory", (tui, theme) => {
     let frame = 0;
@@ -50,9 +48,18 @@ export function installWidget(
           stepDoing: task?.steps.some((s) => s.status === "doing") ?? false,
         });
 
-        const label = `${PHASE_ICON[phase]} ${phase}`;
-        const head = phase === "idle" ? theme.fg(PHASE_COLOR[phase], label) : animatePhase(label, frame);
-        const lines = [truncateToWidth(`${head}${theme.fg("muted", ` · ${statusLine(task)}`)}`, width, "…")];
+        const icon = `${BLUE}${PHASE_ICON[phase]}${RESET}`;
+        const label = phase === "idle" ? theme.fg("dim", phase) : animatePhase(phase, frame);
+        const head = `${icon} ${label}`;
+        const status = `${head}${theme.fg("muted", ` · ${statusLine(task)}`)}`;
+        const model = getModel();
+        let first = truncateToWidth(status, width, "…");
+        if (model && width > 1) {
+          const right = truncateToWidth(`\x1b[38;2;90;175;255m${model}\x1b[0m`, Math.max(0, width - 1), "…");
+          const left = truncateToWidth(status, Math.max(0, width - visibleWidth(right) - 1), "…");
+          first = left + " ".repeat(Math.max(1, width - visibleWidth(left) - visibleWidth(right))) + right;
+        }
+        const lines = [first];
         const lvl = contextLevel(percent, thresholds, baseline);
 
         if (percent !== null && lvl === "must") {

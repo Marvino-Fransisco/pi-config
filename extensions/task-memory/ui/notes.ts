@@ -1,17 +1,20 @@
 import type { Theme } from "@earendil-works/pi-coding-agent";
 import { matchesKey, truncateToWidth, visibleWidth, wrapTextWithAnsi, type OverlayHandle, type TUI } from "@earendil-works/pi-tui";
 
-export function createNotes(tui: TUI, theme: Theme, readText: () => string, reportError: (message: string) => void) {
+export function createNotes(tui: TUI, theme: Theme, readText: () => string, reportError: (message: string) => void, readContext: (width: number) => string = () => "Context panel is unavailable.") {
   let handle: OverlayHandle | undefined;
   let timer: ReturnType<typeof setInterval> | undefined;
   let text = "";
   let lastError = "";
   let offset = 0;
   let maxOffset = 0;
+  let tab: "task" | "context" = "task";
+  let contextWidth = 0;
 
-  function refresh(): void {
+  function refresh(width = Math.max(1, Math.floor(tui.terminal.columns * 0.7) - 4)): void {
     try {
-      const next = readText();
+      const next = tab === "task" ? readText() : readContext(width);
+      if (tab === "context") contextWidth = width;
       lastError = "";
       if (next !== text) {
         text = next;
@@ -32,25 +35,32 @@ export function createNotes(tui: TUI, theme: Theme, readText: () => string, repo
     offset = 0;
   }
 
-  function toggle(): void {
-    if (handle) {
+  function toggle(next: "task" | "context" = "task"): void {
+    if (handle && (next === "task" || tab === next)) {
       close();
       return;
     }
+    open(next);
+  }
 
+  function open(next: "task" | "context"): void {
+    tab = next;
+    offset = 0;
     refresh();
+    if (handle) { tui.requestRender(); return; }
     handle = tui.showOverlay({
       invalidate() {},
       render(width: number): string[] {
         const inner = Math.max(1, width - 2);
+        if (tab === "context" && inner !== contextWidth) refresh(inner);
         const height = Math.max(1, Math.min(16, tui.terminal.rows - 6));
         const lines = text.split("\n").flatMap((line) => wrapTextWithAnsi(line, inner));
         maxOffset = Math.max(0, lines.length - height);
         offset = Math.min(offset, maxOffset);
-        const title = truncateToWidth(" task notes ", inner);
-        const border = (value: string) => theme.fg("accent", value);
+        const title = truncateToWidth(tab === "task" ? " [task] · context " : " task · [context] ", inner);
+        const border = (value: string) => `\x1b[38;2;90;175;255m${value}\x1b[39m`;
         const row = (value: string) => border("┃") + truncateToWidth(value, inner, "…", true) + border("┃");
-        const hint = handle?.isFocused() ? " ↑↓ scroll · Esc unfocus " : " click or Ctrl+Option+T focus ";
+        const hint = handle?.isFocused() ? " ←→ tab · ↑↓ scroll · Esc " : " click or Ctrl+Option+T focus ";
         return [
           border(`┏${title}${"━".repeat(Math.max(0, inner - visibleWidth(title)))}┓`),
           ...lines.slice(offset, offset + height).map(row),
@@ -70,6 +80,10 @@ export function createNotes(tui: TUI, theme: Theme, readText: () => string, repo
       handleInput(data: string) {
         if (matchesKey(data, "escape")) {
           handle?.unfocus();
+        } else if (matchesKey(data, "left") || matchesKey(data, "right") || data === "h" || data === "l") {
+          tab = tab === "task" ? "context" : "task";
+          offset = 0;
+          refresh();
         } else if (matchesKey(data, "up") || data === "k") {
           offset = Math.max(0, offset - 1);
         } else if (matchesKey(data, "down") || data === "j") {
@@ -83,22 +97,26 @@ export function createNotes(tui: TUI, theme: Theme, readText: () => string, repo
       },
     }, {
       anchor: "top-right",
-      width: "40%",
+      width: "70%",
       minWidth: 36,
       margin: { top: 1, right: 1 },
       visible: (width, height) => width >= 80 && height >= 12,
       nonCapturing: true,
     });
-    timer = setInterval(refresh, 1000);
+    timer = setInterval(() => { if (tab === "task") refresh(); }, 1000);
     timer.unref();
   }
 
+  function canShow(): boolean {
+    return tui.terminal.columns >= 80 && tui.terminal.rows >= 12;
+  }
+
   function focus(): boolean {
-    if (!handle || tui.terminal.columns < 80 || tui.terminal.rows < 12) return false;
+    if (!handle || !canShow()) return false;
     handle.focus();
     tui.requestRender();
     return true;
   }
 
-  return { toggle, focus, close };
+  return { toggle, open, focus, close, canShow };
 }

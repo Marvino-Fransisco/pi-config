@@ -37,6 +37,16 @@ export default function (pi: ExtensionAPI) {
   let cachedTask: StateTypes.Task | null = null;
   let pendingInject: PendingInjection | undefined;
 
+  pi.events?.on("task-memory:footer:available", (data) => {
+    if (rerender && ctxRef?.mode === "tui") (data as { available: boolean }).available = true;
+  });
+  pi.events?.on("task-memory:panel:open", (data) => {
+    const request = data as { tab: string; handled: boolean };
+    if (!notes || !notes.canShow() || request.tab !== "context") return;
+    notes.toggle("context");
+    request.handled = true;
+  });
+
   let running = false;
   let compacting = false;
   let resuming = false;
@@ -269,7 +279,21 @@ export default function (pi: ExtensionAPI) {
         const task = S.loadTaskFile(dir).task;
         const project = S.loadProject(dir);
         return stateText(task, project) || "No active task and no project memory.";
-      }, (message) => notify(message, "error"));
+      }, (message) => notify(message, "error"), (width) => {
+        const request: { ctx: ExtensionContext; width: number; lines?: string[] } = { ctx: ctxRef ?? ctx, width };
+        pi.events?.emit("ui:context:read", request);
+        return request.lines?.join("\n") ?? "Context extension is unavailable.";
+      });
+    }, () => {
+      const request = { available: false };
+      pi.events?.emit("ui:footer:available", request);
+      if (!request.available || !ctxRef) return undefined;
+      let model = ctxRef.model?.id || "no-model";
+      if (ctxRef.model?.reasoning) {
+        const level = ctxRef.thinkingLevel || "off";
+        model += level === "off" ? " • thinking off" : ` • ${level}`;
+      }
+      return model;
     });
   });
 
@@ -294,6 +318,8 @@ export default function (pi: ExtensionAPI) {
 
   pi.on("agent_start", async () => { running = true; gitBaseline = await gitFingerprint(); render(); });
   pi.on("turn_start", async () => { if (compacting) { compacting = false; render(); } });
+  pi.on("model_select", async (_e, ctx) => { ctxRef = ctx; render(); });
+  pi.on("thinking_level_select", async (_e, ctx) => { ctxRef = ctx; render(); });
   pi.on("agent_settled", async () => {
     running = false; resuming = false; compacting = false;
     active.clear(); runEdited.clear(); syncSent = false; settleAsked = false;
@@ -493,6 +519,11 @@ export default function (pi: ExtensionAPI) {
     handler: async (ctx) => {
       if (!notes?.focus()) ctx.ui.notify("Open /task and use a terminal at least 80 columns by 12 rows.", "info");
     },
+  });
+
+  pi.registerCommand("close", {
+    description: "Close the task or context panel",
+    handler: async () => { notes?.close(); },
   });
 
   // ---------------------------------------------------------------- command
