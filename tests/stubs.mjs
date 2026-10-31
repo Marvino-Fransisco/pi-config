@@ -34,3 +34,4 @@ export const sliceByColumn = (s, start, length) => [...s].slice(start, start + l
 export const matchesKey = (data, key) => data === key;
 export const wrapTextWithAnsi = (s, width) => s.match(new RegExp(`.{1,${width}}`, "gu")) ?? [""];
 export const Key = { ctrlAlt: (key) => `ctrl+alt+${key}` };
+export const VERSION = "test";

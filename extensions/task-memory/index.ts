@@ -40,6 +40,9 @@ export default function (pi: ExtensionAPI) {
   pi.events?.on("task-memory:footer:available", (data) => {
     if (rerender && ctxRef?.mode === "tui") (data as { available: boolean }).available = true;
   });
+  pi.events?.on("ui:dashboard:sections", (data) => {
+    if (cachedTask) (data as Array<{ title: string; lines: string[] }>).push({ title: "Active task", lines: [S.statusLine(cachedTask)] });
+  });
   pi.events?.on("ui:panel:close", () => notes?.close());
   pi.events?.on("ui:panel:opening", (data) => {
     if ((data as { name: string }).name !== "task") notes?.close();

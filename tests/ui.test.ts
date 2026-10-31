@@ -2,6 +2,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import extension from "../extensions/ui/index.ts";
 import { contextReport, registerContextCommand } from "../extensions/ui/context.ts";
+import { registerDashboard } from "../extensions/ui/dashboard.ts";
 import { installContextFooter } from "../extensions/ui/footer/context-footer.ts";
 import { createNotes } from "../extensions/task-memory/ui/notes.ts";
 
@@ -18,13 +19,14 @@ test("installs the editor, footer and topbar with shared branch data", () => {
       setEditorComponent: (factory: (...args: unknown[]) => unknown) => { editor = factory({}, {}, {}); },
       setFooter: (factory: (...args: unknown[]) => unknown) => { footer = factory({}, {}, footerData); },
       setWidget: (_name: string, factory: (...args: unknown[]) => unknown) => { widget = factory({ requestRender() {} }, {}); },
+      setHeader: () => {},
     },
     getContextUsage: () => ({ percent: 30 }),
-    sessionManager: { getCwd: () => "/project" },
+    sessionManager: { getCwd: () => "/project", getBranch: () => [] },
     model: { id: "test-model", reasoning: true },
     thinkingLevel: "medium",
   };
-  extension({ registerCommand: () => {}, on: (name: string, handler: (event: unknown, ctx: unknown) => void) => { handlers.set(name, handler); } } as never);
+  extension({ registerCommand: () => {}, registerShortcut: () => {}, getCommands: () => [], on: (name: string, handler: (event: unknown, ctx: unknown) => void) => { handlers.set(name, handler); } } as never);
   handlers.get("session_start")!({}, ctx);
   editor.lines = ["───", "input", "───", "suggestion"];
   editor.autocomplete = true;
@@ -32,6 +34,70 @@ test("installs the editor, footer and topbar with shared branch data", () => {
   assert.match(footer.render(100)[0], /test-model • medium/);
   assert.doesNotMatch(footer.render(100)[0], /30%|WATCH|▰|▱/);
   assert.match(widget.render(100)[0], /\/project \(main\)/);
+});
+
+test("fresh session dashboard is centered, runs actions and slides away on the first message", (t) => {
+  t.mock.timers.enable({ apis: ["setInterval"] });
+  const handlers = new Map<string, (event: unknown, ctx: unknown) => void>();
+  const sent: string[] = [];
+  let header: any;
+  let overlay: any;
+  let options: any;
+  let branch: Array<{ type: string }> = [];
+  const tui = {
+    terminal: { rows: 40, columns: 100 },
+    requestRender() {},
+    showOverlay: (component: unknown, opts: unknown) => { overlay = component; options = opts; return { hide: () => { overlay = undefined; } }; },
+  };
+  const ctx = {
+    mode: "tui",
+    ui: { setHeader: (factory: any) => { header?.dispose?.(); header = factory?.(tui, {}); }, notify: () => {} },
+    sessionManager: { getCwd: () => "/project", getBranch: () => branch },
+    model: { id: "test-model", reasoning: true },
+    thinkingLevel: "high",
+  };
+  const listeners: Array<(data: any) => void> = [];
+  registerDashboard({
+    on: (name: string, handler: (event: unknown, ctx: unknown) => void) => { handlers.set(name, handler); },
+    getCommands: () => [{ name: "task" }, { name: "context" }],
+    sendUserMessage: (text: string) => { sent.push(text); },
+    events: { on: (_name: string, handler: (data: any) => void) => { listeners.push(handler); }, emit: (_name: string, data: unknown) => { for (const l of listeners) l(data); } },
+  } as never, () => undefined);
+  listeners.push((data) => data.push({ title: "Active task", lines: ["Build dashboard · step 1/3"] }));
+
+  handlers.get("session_start")!({ reason: "startup" }, ctx);
+  assert.deepEqual(header.render(100), []);
+  const lines: string[] = overlay.render(100);
+  assert.equal(options.nonCapturing, true);
+  assert.equal(options.row, Math.floor((40 - 6 - lines.length) / 2));
+  const colored = lines.join("\n");
+  const text = colored.replace(/\x1b\[[0-9;]*m/g, "");
+  assert.match(text, /██████╗/);
+  assert.match(text, /test-model • high/);
+  assert.match(text, /Build dashboard · step 1\/3/);
+  assert.match(text, /click to run/);
+  assert.match(text, /› Context usage/);
+  assert.doesNotMatch(text, /alt\+/);
+  assert.doesNotMatch(text, /Long-term memory/);
+
+  assert.doesNotMatch(colored.replace(/\x1b\[38;2;(\d+);(\d+);(\d+)m/g, (_m, r, g, b) => (Number(b) >= Number(r) && Number(b) >= Number(g) ? "" : "NOT_BLUE")), /NOT_BLUE/);
+  overlay.handleMouse({ type: "click", y: lines.findIndex((l) => l.includes("Task notes")) });
+  overlay.handleMouse({ type: "click", y: lines.findIndex((l) => l.includes("Resume active task")) });
+  overlay.handleMouse({ type: "click", y: 0 });
+  assert.deepEqual(sent, ["/task", "/task resume"]);
+
+  const start = options.row;
+  handlers.get("input")!({ text: "hi" }, ctx);
+  t.mock.timers.tick(150);
+  overlay.render(100);
+  assert.ok(options.row < start);
+  t.mock.timers.tick(300);
+  assert.equal(overlay, undefined);
+
+  branch = [{ type: "message" }];
+  handlers.get("session_start")!({ reason: "new" }, ctx);
+  assert.equal(header, undefined);
+  assert.equal(overlay, undefined);
 });
 
 test("context report ranks only projected tool results and labels estimates", () => {
@@ -165,7 +231,7 @@ test("working indicator is hidden only when the task widget is available", () =>
     setEditorComponent: () => {}, setFooter: () => {}, setWidget: () => {},
   } };
   const events = { on() {}, emit(name: string, request: { available: boolean }) { if (name === "task-memory:footer:available") request.available = available; } };
-  extension({ events, registerCommand: () => {}, on: (name: string, handler: (event: unknown, ctx: any) => void) => { handlers.set(name, handler); } } as never);
+  extension({ events, registerCommand: () => {}, registerShortcut: () => {}, on: (name: string, handler: (event: unknown, ctx: any) => void) => { handlers.set(name, handler); } } as never);
   handlers.get("agent_start")!({}, ctx);
   available = false;
   handlers.get("agent_start")!({}, ctx);

@@ -3,15 +3,18 @@ import { PipeCursorEditor } from "./editor/pipe-cursor-editor.ts";
 import { installContextFooter } from "./footer/context-footer.ts";
 import { installTopbar } from "./widget/topbar.ts";
 import { registerContextCommand } from "./context.ts";
+import { registerDashboard } from "./dashboard.ts";
 
 export default function (pi: ExtensionAPI) {
 	registerContextCommand(pi);
+	let getFooterData: ReturnType<typeof installContextFooter> | undefined;
+	registerDashboard(pi, () => getFooterData?.());
 	let footerActive = false;
 	pi.events?.on("ui:footer:available", (data) => { if (footerActive) (data as { available: boolean }).available = true; });
 	pi.on("session_start", (_event, ctx) => {
 		footerActive = ctx.mode === "tui";
 		ctx.ui.setEditorComponent((tui, theme, kb) => new PipeCursorEditor(tui, theme, kb));
-		const getFooterData = installContextFooter(ctx, () => {
+		getFooterData = installContextFooter(ctx, () => {
 			const request = { available: false };
 			pi.events?.emit("task-memory:footer:available", request);
 			return request.available;
