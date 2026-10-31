@@ -28,7 +28,7 @@ chmod 600 extensions/long-memory/.env
 nano extensions/long-memory/.env
 ```
 
-Isi `MEMORY_DB_PASSWORD`, `MEMORY_READER_PASSWORD`, dan `GEMINI_API_KEY`. Gunakan dua password database yang berbeda dan kuat, lalu simpan keduanya di password manager. Password hexadecimal menghindari masalah karakter khusus. `MEMORY_DB_PORT` pada template adalah `55434`.
+Isi `MEMORY_DB_PASSWORD`, `MEMORY_APP_PASSWORD`, `MEMORY_READER_PASSWORD`, dan `GEMINI_API_KEY`. Gunakan tiga password database yang berbeda dan kuat, lalu simpan di password manager. Password hexadecimal menghindari masalah karakter khusus. `MEMORY_DB_PORT` pada template adalah `55434`.
 
 Jangan tulis nilai rahasia di chat atau commit file `.env`. Extension membacanya otomatis; environment variable yang sudah ada di proses Pi tetap lebih diprioritaskan. Password yang sudah digunakan untuk membuat database tidak berubah hanya karena file `.env` diedit.
 
@@ -48,13 +48,13 @@ docker compose --env-file extensions/long-memory/.env -f extensions/long-memory/
 
 Harapannya service `postgres` berstatus berjalan dan `healthy`. Container menggunakan Docker named volume; `docker compose down -v` menghapus volume dan seluruh data di dalamnya. Jangan gunakan opsi itu untuk database yang ingin disimpan.
 
-Untuk database yang sudah ada, buat backup dengan `pg_dump`, kemudian jalankan migration tambahan sebelum memakai update/supersede:
+Untuk database yang sudah ada, isi `MEMORY_APP_PASSWORD` di `.env`, buat backup dengan `/memory backup` atau `pg_dump`, jalankan ulang perintah `up` di atas, lalu jalankan migration:
 
 ```zsh
-docker compose --env-file extensions/long-memory/.env -f extensions/long-memory/docker/compose.yml exec -T postgres psql -U memory_owner -d pi_memory -v ON_ERROR_STOP=1 < extensions/long-memory/docker/migrate.sql
+docker compose --env-file extensions/long-memory/.env -f extensions/long-memory/docker/compose.yml exec -T postgres sh -c 'psql -U memory_owner -d pi_memory -v ON_ERROR_STOP=1 -v app_password="$MEMORY_APP_PASSWORD"' < extensions/long-memory/docker/migrate.sql
 ```
 
-Migration ini dapat dijalankan ulang dan tidak menghapus memory.
+Migration ini dapat dijalankan ulang dan tidak menghapus memory. Ia menambah role terbatas `memory_app`, kolom `deleted_at`, dan index dedup.
 
 ## 4. Muat extension di Pi
 
@@ -118,7 +118,7 @@ Jalankan:
 /memory search preferensi gaya penjelasan
 ```
 
-Hasilnya seharusnya mencakup memory global tentang penjelasan singkat. Semantic search mengurutkan berdasarkan kemiripan, jadi urutan dan skor dapat berbeda. Hasil dibatasi lima memory teratas yang sudah terindeks; tidak ada minimum similarity threshold.
+Hasilnya seharusnya mencakup memory global tentang penjelasan singkat. Semantic search mengurutkan berdasarkan kemiripan, jadi urutan dan skor dapat berbeda. Hasil dibatasi lima memory teratas yang sudah terindeks dan hanya yang di atas minimum similarity (default 60%, `MEMORY_MIN_SIMILARITY`). `/memory debug` juga menampilkan hasil di bawah threshold.
 
 Untuk memakai search bar:
 
@@ -170,7 +170,7 @@ Untuk menghapus contoh tes, pakai ID masing-masing yang ditampilkan saat penyimp
 /memory delete <id>
 ```
 
-Setujui konfirmasi hanya untuk ID yang memang ingin dihapus, lalu cek dengan `/memory list`. Penghapusan bersifat permanen dan ikut menghapus embedding serta riwayat revisi terkait.
+Setujui konfirmasi hanya untuk ID yang memang ingin dihapus, lalu cek dengan `/memory list`. Delete memindahkan memory ke trash selama 30 hari: cek dengan `/memory trash`, kembalikan dengan `/memory undelete <id>`, atau hapus permanen dengan `/memory purge <id>`.
 
 ## 10. Tes otomatis opsional
 
@@ -181,4 +181,4 @@ npm test
 npm run typecheck
 ```
 
-Tes PostgreSQL otomatis dilewati tanpa URL database tes khusus. Tes itu melakukan `TRUNCATE`: **jangan arahkan ke database berisi memory asli**. Persyaratan database disposable dijelaskan di `extensions/long-memory/README.md` bagian Verification.
+Tes PostgreSQL otomatis dilewati tanpa URL database tes khusus. Tes itu menghapus semua baris `memories` dan `projects`: **jangan arahkan ke database berisi memory asli**. Persyaratan database disposable dijelaskan di `extensions/long-memory/README.md` bagian Verification.

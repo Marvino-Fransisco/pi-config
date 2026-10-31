@@ -137,8 +137,8 @@ flowchart TD
   CMD --> SCREEN & STORE
   TOOL --> STORE
   SCREEN --> STORE
-  STORE -->|"countTokens + embedContent"| GEMINI
-  STORE -->|"owner: normal memory operations"| PG
+  STORE -->|"embedContent (+ countTokens above 512 chars)"| GEMINI
+  STORE -->|"memory_app pool: normal memory operations"| PG
   STORE -->|"memory_reader: read-only SQL"| PG
   CONFIG --> STORE
   CONFIG -.->|"--env-file"| COMPOSE
@@ -158,7 +158,7 @@ flowchart TD
   PROJECT["src/store.ts: projectPath() → projects upsert for project scope"]
   INSERT[("PostgreSQL: scope/text lock → reuse identical memory or INSERT")]
   INDEX["src/store.ts: indexMemory() → embed(RETRIEVAL_DOCUMENT)"]
-  COUNT["Google: countTokens ≤ 2048"]
+  COUNT["Google: countTokens ≤ 2048 (only above 512 chars)"]
   VECTOR["Google: embedContent → 768 values"]
   LOCK["src/store.ts: indexMemory() → lock and verify current content"]
   INDEXED[("PostgreSQL: UPSERT memory_embeddings")]
@@ -166,11 +166,11 @@ flowchart TD
   SEARCH["User opens independent /memory panel → STATS → SEARCH or DEBUG"]
   SUBMIT["ui/panel.ts: Input.onSubmit() → searchMemories()"]
   QUERY["src/store.ts: embed(RETRIEVAL_QUERY) → Google"]
-  MATCH[("Exact pgvector cosine distance: top 5 indexed, global + selected project scope")]
+  MATCH[("Exact pgvector cosine distance: top 5 indexed, not trashed, ≥ minimum similarity")]
   RESULTS["ui/panel.ts: searchPanel.render() → results + similarity"]
   DETAIL["ui/panel.ts: formatMemory() → selected memory"]
   DELETE["/memory delete ID → approve() → deleteMemory()"]
-  REMOVE[("DELETE memories → cascade embeddings and revisions")]
+  REMOVE[("Soft delete: deleted_at = now(); purged after 30 days or by /memory purge")]
   REQUEST --> TOOL --> CONFIRM
   CONFIRM -->|"declined"| REJECT
   CONFIRM -->|"approved"| SAVE --> PROJECT --> INSERT --> INDEX --> COUNT --> VECTOR --> LOCK --> INDEXED

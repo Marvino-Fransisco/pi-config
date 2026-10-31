@@ -8,3 +8,4 @@ ALTER ROLE memory_reader SET default_transaction_read_only = on;
 ALTER ROLE memory_reader SET statement_timeout = '3s';
 REVOKE TEMPORARY ON DATABASE pi_memory FROM PUBLIC;
 SQL
+psql --username "$POSTGRES_USER" --dbname "$POSTGRES_DB" --set ON_ERROR_STOP=1 --set app_password="$MEMORY_APP_PASSWORD" < /docker-entrypoint-initdb.d/migrate.sql.in

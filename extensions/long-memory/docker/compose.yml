@@ -9,6 +9,7 @@ services:
       POSTGRES_USER: memory_owner
       POSTGRES_PASSWORD: ${MEMORY_DB_PASSWORD:?Set MEMORY_DB_PASSWORD}
       MEMORY_READER_PASSWORD: ${MEMORY_READER_PASSWORD:?Set reader password}
+      MEMORY_APP_PASSWORD: ${MEMORY_APP_PASSWORD:?Set app password}
     ports:
       - "127.0.0.1:${MEMORY_DB_PORT:-55432}:5432"
     volumes:

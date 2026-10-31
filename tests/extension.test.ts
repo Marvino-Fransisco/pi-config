@@ -163,7 +163,7 @@ test("independent memory panel replaces task and preserves text editing keys", a
   assert.match(h.panel()!.render(80).join("\n"), /\[memory\]/);
   assert.doesNotMatch(h.panel()!.render(80).join("\n"), /\[task\]|context/);
   h.panel()!.handleInput("tab");
-  assert.match(h.panel()!.render(80).join("\n"), /\[SEARCH\]/);
+  assert.match(h.panel()!.render(80).join("\n"), /48;2;90;175;255m ⌕ SEARCH /);
   h.panel()!.handleInput("hello");
   assert.match(h.panel()!.render(80).join("\n"), /hello/);
   h.panel()!.handleInput("ctrl+left");

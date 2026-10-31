@@ -14,7 +14,8 @@ CREATE TABLE memories (
   content text NOT NULL CHECK (length(content) > 0),
   source text NOT NULL,
   created_at timestamptz NOT NULL DEFAULT now(),
-  updated_at timestamptz NOT NULL DEFAULT now()
+  updated_at timestamptz NOT NULL DEFAULT now(),
+  deleted_at timestamptz
 );
 
 CREATE TABLE memory_embeddings (
@@ -25,6 +26,8 @@ CREATE TABLE memory_embeddings (
 );
 
 CREATE INDEX memories_project_id_idx ON memories(project_id);
+CREATE INDEX memories_content_hash_idx ON memories(project_id, md5(content));
+CREATE INDEX memories_deleted_at_idx ON memories(deleted_at) WHERE deleted_at IS NOT NULL;
 
 CREATE TABLE memory_revisions (
   id bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,

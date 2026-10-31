@@ -18,6 +18,7 @@ export class Input {
   focused = false;
   value = "";
   handleInput(data) { if (data === "return") this.onSubmit?.(this.value); else this.value += data; }
+  getValue() { return this.value; }
   render() { return [this.value]; }
   invalidate() {}
 }
@@ -29,7 +30,7 @@ export class Text {
 }
 
 export const truncateToWidth = (s, width, _ellipsis, pad) => pad ? s.padEnd(width) : s;
-export const visibleWidth = (s) => [...s].length;
+export const visibleWidth = (s) => [...s.replace(/\x1b\[[0-9;]*m/g, "")].length;
 export const sliceByColumn = (s, start, length) => [...s].slice(start, start + length).join("");
 export const matchesKey = (data, key) => data === key;
 export const wrapTextWithAnsi = (s, width) => s.match(new RegExp(`.{1,${width}}`, "gu")) ?? [""];

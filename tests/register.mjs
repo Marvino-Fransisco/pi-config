@@ -1,6 +1,10 @@
 // Lets `node --test` load task-memory/index.ts outside Pi:
 // Pi's packages are replaced by tests/stubs.mjs; typebox is the real one from the installed Pi release.
 import { registerHooks } from "node:module";
+process.env.MEMORY_BACKUP ??= "off";
+process.env.MEMORY_DATABASE_URL ??= "";
+process.env.MEMORY_READER_DATABASE_URL ??= "";
+process.env.GEMINI_API_KEY ??= "";
 import { readFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { pathToFileURL } from "node:url";

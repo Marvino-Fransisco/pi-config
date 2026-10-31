@@ -2,3 +2,4 @@
 !Dockerfile
 !schema.sql
 !init.sh
+!migrate.sql
