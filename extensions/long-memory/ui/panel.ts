@@ -263,6 +263,11 @@ export function createMemoryOverlay(ctx: ExtensionContext, tui: TUI, theme: Them
       invalidate() { content.invalidate(); },
       handleInput: content.handleInput,
       handleMouse(event) {
+        if ((event.type === "press" || event.type === "click") && event.button === "left") {
+          handle?.focus();
+          tui.requestRender();
+          return { handled: true, focus: true };
+        }
         if (event.type === "wheel") { content.handleInput((event.wheelDelta ?? 0) < 0 ? "\x1b[A" : "\x1b[B"); return { handled: true }; }
         return content.handleMouse(event);
       },

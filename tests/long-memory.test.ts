@@ -128,6 +128,11 @@ test("memory command discovers actions and manages sticky overlay focus", async 
   assert.equal(focused, false);
   assert.equal(hidden, false);
   assert.deepEqual(panel.handleMouse({ type: "press", button: "left" }), { handled: true, focus: true });
+  assert.equal(focused, true);
+  panel.handleInput("escape");
+  panel.handleMouse({ type: "click", button: "left" });
+  assert.equal(focused, true);
+  panel.handleInput("escape");
   assert.equal(panel.handleMouse({ type: "press", button: "right" }), undefined);
   await command.handler("", ctx);
   assert.equal(focused, true);

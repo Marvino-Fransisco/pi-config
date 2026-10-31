@@ -124,6 +124,11 @@ test("task notes stay open, update from disk, scroll and release focus", async (
   assert.doesNotMatch(h.panel()!.render(50).join("\n"), /## Active task/);
   h.panel()!.handleInput("escape");
   assert.equal(h.isFocused(), false);
+  h.panel()!.handleMouse({ type: "press", button: "left" });
+  assert.equal(h.isFocused(), true);
+  h.panel()!.handleInput("escape");
+  h.panel()!.handleMouse({ type: "click", button: "left" });
+  assert.equal(h.isFocused(), true);
   fs.rmSync(path.join(h.cwd, ".pi", "memory", "task.json"));
   await new Promise((resolve) => setTimeout(resolve, 1100));
   assert.match(h.panel()!.render(50).join("\n"), /No active task/);

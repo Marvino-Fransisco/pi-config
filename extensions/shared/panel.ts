@@ -55,7 +55,10 @@ export function createNotes(tui: TUI, theme: Theme, readText: (width: number) =>
         ];
       },
       handleMouse(event) {
-        if (event.type === "press" && event.button === "left") return { handled: true, focus: true };
+        if ((event.type === "press" || event.type === "click") && event.button === "left") {
+          focus();
+          return { handled: true, focus: true };
+        }
         if (event.type === "wheel") {
           offset = Math.max(0, Math.min(maxOffset, offset + (event.wheelDelta ?? 0)));
           return { handled: true };
