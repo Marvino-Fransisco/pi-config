@@ -1,6 +1,6 @@
 // task-memory: durable task state, agent-written handoffs at compaction, phase widget.
 import type { ExtensionAPI, ExtensionContext, SessionBoundaryDraft } from "@earendil-works/pi-coding-agent";
-import { Text } from "@earendil-works/pi-tui";
+import { Key, Text } from "@earendil-works/pi-tui";
 import * as fs from "node:fs";
 import * as path from "node:path";
 import * as S from "./state/state.ts";
@@ -14,7 +14,8 @@ import { applyTaskAction } from "./actions/actions.ts";
 import type { Handoff } from "./actions/actions.types.ts";
 import type { Saved, PendingInjection, ActiveTool } from "./index.types.ts";
 import { compactionDraft, lastKnownHash } from "./compaction/compaction.ts";
-import { installWidget, showTaskPanel } from "./ui/ui.ts";
+import { installWidget } from "./ui/ui.ts";
+import { createNotes } from "./ui/notes.ts";
 
 const LABELS: Record<string, string> = {
   "task-memory-warn": "context high: handoff at the next step boundary",
@@ -31,6 +32,7 @@ export default function (pi: ExtensionAPI) {
   let th: Thresholds = readThresholds(process.env);
   let ctxRef: ExtensionContext | undefined;
   let rerender: (() => void) | undefined;
+  let notes: ReturnType<typeof createNotes> | undefined;
   let cachedTask: StateTypes.Task | null = null;
   let pendingInject: PendingInjection | undefined;
 
@@ -202,7 +204,14 @@ export default function (pi: ExtensionAPI) {
       },
       percent: ctxRef ? pct(ctxRef) : null,
       thresholds: th, baseline,
-    }), (callback) => { rerender = callback; });
+    }), (callback) => { rerender = callback; }, (tui, theme) => {
+      notes?.close();
+      notes = createNotes(tui, theme, () => {
+        const task = S.loadTaskFile(dir).task;
+        const project = S.loadProject(dir);
+        return stateText(task, project) || "No active task and no project memory.";
+      }, (message) => notify(message, "error"));
+    });
   });
 
   pi.on("session_tree", async (_e, ctx) => {
@@ -212,7 +221,7 @@ export default function (pi: ExtensionAPI) {
     refreshInject(ctx); render();
   });
 
-  pi.on("session_shutdown", async () => { rerender = undefined; });
+  pi.on("session_shutdown", async () => { notes?.close(); notes = undefined; rerender = undefined; });
 
   pi.on("before_agent_start", async () => {
     if (!pendingInject) return;
@@ -402,6 +411,13 @@ export default function (pi: ExtensionAPI) {
       new Text(theme.fg(type === "task-memory-must" ? "error" : "warning", `task-memory: ${label}`), 0, 0));
   }
 
+  pi.registerShortcut(Key.ctrlAlt("t"), {
+    description: "Focus task notes for scrolling",
+    handler: async (ctx) => {
+      if (!notes?.focus()) ctx.ui.notify("Open /task and use a terminal at least 80 columns by 12 rows.", "info");
+    },
+  });
+
   // ---------------------------------------------------------------- command
   pi.registerCommand("task", {
     description: "Show task memory. /task resume | /task abandon",
@@ -441,7 +457,7 @@ export default function (pi: ExtensionAPI) {
 
       const text = stateText(task, project) || "No active task and no project memory.";
       if (ctx.mode !== "tui") { ctx.ui.notify(text, "info"); return; }
-      await showTaskPanel(ctx, cwd, dir, text);
+      notes?.toggle();
     },
   });
 }

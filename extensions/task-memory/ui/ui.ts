@@ -1,6 +1,5 @@
-import type { ExtensionContext, ThemeColor } from "@earendil-works/pi-coding-agent";
-import { matchesKey, truncateToWidth, visibleWidth } from "@earendil-works/pi-tui";
-import * as path from "node:path";
+import type { ExtensionContext, Theme, ThemeColor } from "@earendil-works/pi-coding-agent";
+import { truncateToWidth, type TUI } from "@earendil-works/pi-tui";
 import { contextLevel, derivePhase, PHASE_ICON } from "../phase/phase.ts";
 import type { Phase } from "../phase/phase.types.ts";
 import type { WidgetState } from "./ui.types.ts";
@@ -15,9 +14,11 @@ export function installWidget(
   ctx: ExtensionContext,
   getState: () => WidgetState,
   setRerender: (callback: (() => void) | undefined) => void,
+  onReady: (tui: TUI, theme: Theme) => void,
 ): void {
   ctx.ui.setWidget("task-memory", (tui, theme) => {
     setRerender(() => tui.requestRender());
+    onReady(tui, theme);
     return {
       dispose() { setRerender(undefined); },
       invalidate() {},
@@ -42,24 +43,4 @@ export function installWidget(
       },
     };
   }, { placement: "belowEditor" });
-}
-
-export async function showTaskPanel(ctx: ExtensionContext, cwd: string, dir: string, text: string): Promise<void> {
-  await ctx.ui.custom<void>((_tui, theme, _kb, done) => ({
-    render(width: number) {
-      const title = `── task-memory (${path.relative(cwd, dir) || dir}) `;
-      return [
-        theme.fg("accent", truncateToWidth(title + "─".repeat(Math.max(0, width - visibleWidth(title))), width, "…")),
-        "",
-        ...text.split("\n").map((l) => truncateToWidth(l, width, "…")),
-        "",
-        theme.fg("dim", "Esc / q / Enter to close"),
-        theme.fg("accent", "─".repeat(Math.max(0, width))),
-      ];
-    },
-    invalidate() {},
-    handleInput(data: string) {
-      if (matchesKey(data, "escape") || matchesKey(data, "ctrl+c") || matchesKey(data, "enter") || data === "q") done();
-    },
-  }));
 }

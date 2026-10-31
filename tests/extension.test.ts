@@ -23,7 +23,25 @@ function harness(mode: "tui" | "print") {
   let tool: Tool | undefined;
   let widget: { render: (width: number) => string[] } | undefined;
   let command: { handler: (args: string, ctx: unknown) => Promise<void> } | undefined;
-  let panelLines: string[] = [];
+  let panel: { render: (width: number) => string[]; handleInput: (data: string) => void; handleMouse: (event: { type: string; button: string; wheelDelta?: number }) => { handled?: boolean; focus?: boolean } | undefined } | undefined;
+  let shortcut: { handler: (ctx: unknown) => Promise<void> } | undefined;
+  let focused = false;
+  let visible: ((width: number, height: number) => boolean) | undefined;
+  const terminal = { columns: 120, rows: 30 };
+  const tui = {
+    terminal,
+    requestRender: () => {},
+    showOverlay: (component: typeof panel, options: { visible: typeof visible }) => {
+      panel = component;
+      visible = options.visible;
+      return {
+        hide: () => { panel = undefined; focused = false; },
+        focus: () => { focused = true; },
+        unfocus: () => { focused = false; },
+        isFocused: () => focused,
+      };
+    },
+  };
   const cwd = fs.mkdtempSync(path.join(os.tmpdir(), "tm-ext-"));
   dirs.push(cwd);
   fs.mkdirSync(path.join(cwd, ".git"));
@@ -33,6 +51,7 @@ function harness(mode: "tui" | "print") {
     registerTool: (t: Tool) => { tool = t; },
     registerMessageRenderer: () => {},
     registerCommand: (_name: string, c: typeof command) => { command = c; },
+    registerShortcut: (_key: string, s: typeof shortcut) => { shortcut = s; },
     exec: async () => ({ code: 1, stdout: "", stderr: "", killed: false }),
     getSettings: () => ({}),
     sendMessage: () => {},
@@ -41,14 +60,8 @@ function harness(mode: "tui" | "print") {
   const ctx = {
     cwd, mode, hasUI: mode === "tui",
     ui: { notify: () => {}, setWidget: (_name: string, factory: (tui: unknown, theme: unknown) => { render: (width: number) => string[] }) => {
-      widget = factory({ requestRender: () => {} }, { fg: (_color: string, text: string) => text });
-    }, confirm: async () => true, custom: async (factory: (tui: unknown, theme: unknown, kb: unknown, done: () => void) => { render: (width: number) => string[]; handleInput: (data: string) => void }) => {
-      let closed = false;
-      const panel = factory({}, { fg: (_color: string, text: string) => text }, {}, () => { closed = true; });
-      panelLines = panel.render(80);
-      panel.handleInput("q");
-      assert.equal(closed, true);
-    } },
+      widget = factory(tui, { fg: (_color: string, text: string) => text });
+    }, confirm: async () => true },
     isIdle: () => true,
     sessionManager: { getBranch: () => [] },
     getContextUsage: () => ({ tokens: null, contextWindow: 200000, percent: usage.percent }),
@@ -61,7 +74,7 @@ function harness(mode: "tui" | "print") {
     return r as Result;
   };
   const call = (args: Record<string, unknown>) => tool!.execute("id", tool!.prepareArguments(args), undefined, undefined, ctx);
-  return { emit, call, usage, cwd, widgetLines: () => widget!.render(120), command: (args: string) => command!.handler(args, ctx), panelLines: () => panelLines };
+  return { emit, call, usage, cwd, terminal, widgetLines: () => widget!.render(120), command: (args: string) => command!.handler(args, ctx), panel: () => panel, focus: () => shortcut!.handler(ctx), isFocused: () => focused, visible: (width: number, height: number) => visible!(width, height) };
 }
 
 test("widget reflects task changes made outside this session", async () => {
@@ -74,14 +87,33 @@ test("widget reflects task changes made outside this session", async () => {
   assert.match(h.widgetLines()[0]!, /no active task/i);
 });
 
-test("task command shows current task and closes with q", async () => {
+test("task notes stay open, update from disk, scroll and release focus", async () => {
   const h = harness("tui");
   await h.emit("session_start");
-  await h.call({ action: "start", title: "Panel task", goal: "G" });
+  await h.call({ action: "start", title: "Panel task", goal: "G", steps: Array.from({ length: 14 }, (_, i) => `step ${i}`) });
   await h.command("");
-  assert.match(h.panelLines().join("\n"), /Panel task/);
-  assert.match(h.panelLines().join("\n"), /Esc \/ q \/ Enter to close/);
-  assert.equal(h.panelLines().at(-1), "─".repeat(80));
+  const rows = h.panel()!.render(50);
+  assert.match(rows.join("\n"), /Panel task/);
+  assert.ok(rows.every((row) => [...row].length === 50));
+  assert.ok(rows.slice(1, -1).every((row) => row.startsWith("┃") && row.endsWith("┃")));
+  assert.deepEqual(h.panel()!.handleMouse({ type: "press", button: "left" }), { handled: true, focus: true });
+  assert.equal(h.isFocused(), false);
+  assert.equal(h.visible(79, 30), false);
+  assert.equal(h.visible(120, 11), false);
+  assert.equal(h.visible(120, 30), true);
+  await h.focus();
+  assert.equal(h.isFocused(), true);
+  h.panel()!.render(50);
+  assert.deepEqual(h.panel()!.handleMouse({ type: "wheel", button: "none", wheelDelta: 1 }), { handled: true });
+  assert.doesNotMatch(h.panel()!.render(50).join("\n"), /## Active task/);
+  h.panel()!.handleInput("escape");
+  assert.equal(h.isFocused(), false);
+  fs.rmSync(path.join(h.cwd, ".pi", "memory", "task.json"));
+  await new Promise((resolve) => setTimeout(resolve, 1100));
+  assert.match(h.panel()!.render(50).join("\n"), /No active task/);
+  await h.command("");
+  assert.equal(h.panel(), undefined);
+  await h.emit("session_shutdown");
 });
 
 test("task tool persists and archives a completed task", async () => {

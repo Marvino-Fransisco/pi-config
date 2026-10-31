@@ -25,9 +25,11 @@ Pi extension that keeps long-running work resumable across context compaction an
 
 | Command | Effect |
 | --- | --- |
-| `/task` | Show task and project memory |
+| `/task` | Toggle the task and project memory notes panel |
 | `/task resume` | Continue the active task |
 | `/task abandon` | Archive the active task as abandoned |
+
+The notes panel stays open while typing and refreshes from disk once per second. Click the panel in fullscreen mode or press `Ctrl+Alt+T` (`Control+Option+T` on Mac) to focus it; use the mouse wheel, arrow keys or `j`/`k` to scroll, and press `Esc` to return to the editor. The panel is hidden when the terminal is smaller than 80 columns or 12 rows.
 
 ## Configuration
 
@@ -42,7 +44,7 @@ Pi extension that keeps long-running work resumable across context compaction an
 - `actions/`: task tool action handling
 - `schema/`: task tool input schema
 - `compaction/`: compaction draft and session hash lookup
-- `ui/`: phase widget and task panel
+- `ui/`: phase widget and sticky notes overlay
 - `state/`: data model, rules, rendering, storage (no Pi imports)
 - `phase/`: tool classification, phase, thresholds (no Pi imports)
 - `prompts/`: text sent to the model
@@ -66,4 +68,4 @@ After a Pi upgrade, update the release path in `tsconfig.json`.
 - Edits made through `bash` (sed, redirects) are not tracked as touched files.
 - Memory lives on disk, so it does not rewind with `/tree`.
 - An intercepted `/compact` may be reported as cancelled before the handoff turn runs.
-- The `/task` panel does not scroll.
+- The notes panel overlays existing terminal content; it does not reserve a separate column.
