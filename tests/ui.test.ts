@@ -100,9 +100,11 @@ test("context report resolves model-specific and disabled compaction reserves", 
 test("context panel recomputes layout when its width changes", () => {
   let panel: any;
   const widths: number[] = [];
-  const tui = { terminal: { columns: 120, rows: 30 }, requestRender() {}, showOverlay(component: unknown) { panel = component; return { hide() {}, isFocused: () => false }; } };
+  let overlayWidth: string | undefined;
+  const tui = { terminal: { columns: 120, rows: 30 }, requestRender() {}, showOverlay(component: unknown, options: { width: string }) { panel = component; overlayWidth = options.width; return { hide() {}, focus() {}, isFocused: () => true }; } };
   const notes = createNotes(tui as never, { fg: (_color: string, text: string) => text } as never, () => "task", () => {}, (width) => { widths.push(width); return `width ${width}`; });
   notes.open("context");
+  assert.equal(overlayWidth, "65%");
   panel.render(100);
   panel.render(80);
   panel.render(80);

@@ -11,7 +11,7 @@ export function createNotes(tui: TUI, theme: Theme, readText: () => string, repo
   let tab: "task" | "context" = "task";
   let contextWidth = 0;
 
-  function refresh(width = Math.max(1, Math.floor(tui.terminal.columns * 0.7) - 4)): void {
+  function refresh(width = Math.max(1, Math.floor(tui.terminal.columns * 0.65) - 4)): void {
     try {
       const next = tab === "task" ? readText() : readContext(width);
       if (tab === "context") contextWidth = width;
@@ -47,7 +47,7 @@ export function createNotes(tui: TUI, theme: Theme, readText: () => string, repo
     tab = next;
     offset = 0;
     refresh();
-    if (handle) { tui.requestRender(); return; }
+    if (handle) { focus(); tui.requestRender(); return; }
     handle = tui.showOverlay({
       invalidate() {},
       render(width: number): string[] {
@@ -97,12 +97,13 @@ export function createNotes(tui: TUI, theme: Theme, readText: () => string, repo
       },
     }, {
       anchor: "top-right",
-      width: "70%",
+      width: "65%",
       minWidth: 36,
       margin: { top: 1, right: 1 },
       visible: (width, height) => width >= 80 && height >= 12,
       nonCapturing: true,
     });
+    focus();
     timer = setInterval(() => { if (tab === "task") refresh(); }, 1000);
     timer.unref();
   }

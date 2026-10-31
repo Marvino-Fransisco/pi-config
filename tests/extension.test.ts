@@ -112,7 +112,7 @@ test("task notes stay open, update from disk, scroll and release focus", async (
   assert.ok(plainRows.slice(1, -1).every((row) => row.startsWith("┃") && row.endsWith("┃")));
   assert.ok(rows.every((row) => row.startsWith("\x1b[38;2;90;175;255m")));
   assert.deepEqual(h.panel()!.handleMouse({ type: "press", button: "left" }), { handled: true, focus: true });
-  assert.equal(h.isFocused(), false);
+  assert.equal(h.isFocused(), true);
   assert.equal(h.visible(79, 30), false);
   assert.equal(h.visible(120, 11), false);
   assert.equal(h.visible(120, 30), true);
@@ -160,12 +160,16 @@ test("context command opens the real shared panel and provides context data", as
   await h.emit("session_start");
   await command.handler("", h.ctx);
   assert.match(h.panel()!.render(50).join("\n"), /Context usage/);
+  assert.equal(h.isFocused(), true);
   await command.handler("", h.ctx);
   assert.equal(h.panel(), undefined);
   await h.command("");
   assert.match(h.panel()!.render(50).join("\n"), /No active task/);
+  h.panel()!.handleInput("escape");
+  assert.equal(h.isFocused(), false);
   await command.handler("", h.ctx);
   assert.match(h.panel()!.render(50).join("\n"), /Context usage/);
+  assert.equal(h.isFocused(), true);
   await h.close();
   assert.equal(h.panel(), undefined);
   await h.close();

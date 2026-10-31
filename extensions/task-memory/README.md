@@ -35,7 +35,7 @@ Pi extension that keeps long-running work resumable across context compaction an
 | `/task threshold warning 20` | Set the warning percentage |
 | `/task threshold mandatory 65` | Set the mandatory handoff percentage |
 
-The notes panel stays open while typing and refreshes task memory from disk once per second. When the UI extension is loaded, `/context` opens the context tab in the same panel, or closes the panel if that tab is already open; context data refreshes when that tab opens. Click the panel in fullscreen mode or press `Ctrl+Alt+T` (`Control+Option+T` on Mac) to focus it. Use left/right or `h`/`l` to switch tabs, the mouse wheel, up/down or `j`/`k` to scroll, and `Esc` to return focus to the editor. The panel is hidden below 80 columns or 12 rows; `/context` falls back to a separate screen.
+The notes panel stays open while typing and refreshes task memory from disk once per second. When the UI extension is loaded, `/context` opens the context tab in the same panel, or closes the panel if that tab is already open; context data refreshes when that tab opens. The panel receives focus when opened. Click it in fullscreen mode or press `Ctrl+Alt+T` (`Control+Option+T` on Mac) to focus it again after releasing focus. Use left/right or `h`/`l` to switch tabs, the mouse wheel, up/down or `j`/`k` to scroll, and `Esc` to return focus to the editor. The panel is hidden below 80 columns or 12 rows; `/context` falls back to a separate screen.
 
 ## Configuration
 
