@@ -14,7 +14,7 @@ function barStatus(percent: number): { color: string; label: string } {
 	if (percent >= 90) return { color: RED, label: "⚠ CRITICAL" };
 	if (percent >= 80) return { color: ORANGE, label: "▲ HIGH" };
 	if (percent >= 25) return { color: YELLOW, label: "◐ WATCH" };
-	return { color: GREEN, label: "● SAFE" };
+	return { color: GREEN, label: "" };
 }
 
 export function installContextFooter(ctx: ExtensionContext): () => ReadonlyFooterDataProvider | undefined {
@@ -28,11 +28,11 @@ export function installContextFooter(ctx: ExtensionContext): () => ReadonlyFoote
 				const usage = ctx.getContextUsage();
 				const hasPercent = typeof usage?.percent === "number" && Number.isFinite(usage.percent);
 				const percent = hasPercent ? Math.max(0, Math.min(100, usage.percent!)) : 0;
-				const filled = Math.round(percent / 5);
+				const filled = Math.round(percent / 10);
 				const status = hasPercent ? barStatus(Math.round(percent)) : { color: SHADOW, label: "○ UNKNOWN" };
-				const suffix = hasPercent ? ` ${Math.round(percent)}%  ${status.label}` : ` ?%  ${status.label}`;
-				const barText = `${"█".repeat(filled)}${"░".repeat(20 - filled)}${suffix}`;
-				const barLine = `${status.color}${"█".repeat(filled)}${SHADOW}${"░".repeat(20 - filled)}${status.color}${suffix}${RESET}`;
+				const suffix = `${hasPercent ? `${Math.round(percent)}%` : "?%"}${status.label ? `  ${status.label}` : ""}`;
+				const barText = `${"▰ ".repeat(filled)}${"▱ ".repeat(10 - filled)} ${suffix}`;
+				const barLine = `${status.color}${"▰ ".repeat(filled)}${SHADOW}${"▱ ".repeat(10 - filled)} ${status.color}${suffix}${RESET}`;
 
 				const modelName = ctx.model?.id || "no-model";
 				let modelText = modelName;
