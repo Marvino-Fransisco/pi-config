@@ -38,10 +38,16 @@ Pi extension that keeps long-running work resumable across context compaction an
 
 ## Files
 
-- `index.ts`: Pi wiring (tool, command, hooks, widget)
-- `state.ts`: data model, rules, rendering, storage (no Pi imports)
-- `phase.ts`: tool classification, phase, thresholds (no Pi imports)
-- `prompts.ts`: text sent to the model
+- `index.ts`: Pi registration, lifecycle hooks, and shared runtime state
+- `actions/`: task tool action handling
+- `schema/`: task tool input schema
+- `compaction/`: compaction draft and session hash lookup
+- `ui/`: phase widget and task panel
+- `state/`: data model, rules, rendering, storage (no Pi imports)
+- `phase/`: tool classification, phase, thresholds (no Pi imports)
+- `prompts/`: text sent to the model
+
+Each module with its own types keeps them in a corresponding `*.types.ts` file beside its implementation. The root `index.ts` remains the Pi extension entry point.
 
 ## Development
 
@@ -49,7 +55,7 @@ Pi extension that keeps long-running work resumable across context compaction an
 npm install
 npm test            # unit + hook tests (Pi packages stubbed), no model calls
 npm run typecheck   # tsconfig paths point at the installed Pi release
-ln -s "$PWD/task-memory" ~/.pi/agent/extensions/task-memory   # install
+ln -s "$PWD/extensions/task-memory" ~/.pi/agent/extensions/task-memory   # install
 ```
 
 After a Pi upgrade, update the release path in `tsconfig.json`.

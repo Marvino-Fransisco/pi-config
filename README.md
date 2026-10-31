@@ -1,6 +1,6 @@
 # Pi configuration
 
-`tui-custom.ts` customizes the Pi editor and footer. The footer displays a shaded context-usage bar with visual status levels at 65%, 80%, 90%, 98%, and 100%. These levels are visual indicators, not compaction triggers. `task-memory/` contains the task-memory extension and its separate handoff warnings. Reload Pi with `/reload` after changing extensions.
+`extensions/ui/tui-custom.ts` registers the custom UI components in `extensions/ui/editor/`, `extensions/ui/footer/`, and `extensions/ui/widget/`. The footer displays a shaded context-usage bar with visual status levels at 25%, 80%, 90%, 98%, and 100%. These levels are visual indicators, not compaction triggers. `extensions/task-memory/` contains the task-memory extension and its separate handoff warnings. Reload Pi with `/reload` after changing extensions.
 
 ## Scrolling inside tmux
 

@@ -4,7 +4,7 @@ import assert from "node:assert/strict";
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
-import extension from "../task-memory/index.ts";
+import extension from "../extensions/task-memory/index.ts";
 
 type Handler = (event: unknown, ctx: unknown) => unknown;
 type Entry = { type: string; customType?: string; details?: Record<string, unknown> };
@@ -22,6 +22,8 @@ function harness(mode: "tui" | "print") {
   const handlers = new Map<string, Handler[]>();
   let tool: Tool | undefined;
   let widget: { render: (width: number) => string[] } | undefined;
+  let command: { handler: (args: string, ctx: unknown) => Promise<void> } | undefined;
+  let panelLines: string[] = [];
   const cwd = fs.mkdtempSync(path.join(os.tmpdir(), "tm-ext-"));
   dirs.push(cwd);
   fs.mkdirSync(path.join(cwd, ".git"));
@@ -30,7 +32,7 @@ function harness(mode: "tui" | "print") {
     on: (name: string, h: Handler) => { handlers.set(name, [...(handlers.get(name) ?? []), h]); return () => {}; },
     registerTool: (t: Tool) => { tool = t; },
     registerMessageRenderer: () => {},
-    registerCommand: () => {},
+    registerCommand: (_name: string, c: typeof command) => { command = c; },
     exec: async () => ({ code: 1, stdout: "", stderr: "", killed: false }),
     getSettings: () => ({}),
     sendMessage: () => {},
@@ -40,7 +42,14 @@ function harness(mode: "tui" | "print") {
     cwd, mode, hasUI: mode === "tui",
     ui: { notify: () => {}, setWidget: (_name: string, factory: (tui: unknown, theme: unknown) => { render: (width: number) => string[] }) => {
       widget = factory({ requestRender: () => {} }, { fg: (_color: string, text: string) => text });
-    }, confirm: async () => true },
+    }, confirm: async () => true, custom: async (factory: (tui: unknown, theme: unknown, kb: unknown, done: () => void) => { render: (width: number) => string[]; handleInput: (data: string) => void }) => {
+      let closed = false;
+      const panel = factory({}, { fg: (_color: string, text: string) => text }, {}, () => { closed = true; });
+      panelLines = panel.render(80);
+      panel.handleInput("q");
+      assert.equal(closed, true);
+    } },
+    isIdle: () => true,
     sessionManager: { getBranch: () => [] },
     getContextUsage: () => ({ tokens: null, contextWindow: 200000, percent: usage.percent }),
     model: { contextWindow: 200000 },
@@ -52,7 +61,7 @@ function harness(mode: "tui" | "print") {
     return r as Result;
   };
   const call = (args: Record<string, unknown>) => tool!.execute("id", tool!.prepareArguments(args), undefined, undefined, ctx);
-  return { emit, call, usage, cwd, widgetLines: () => widget!.render(120) };
+  return { emit, call, usage, cwd, widgetLines: () => widget!.render(120), command: (args: string) => command!.handler(args, ctx), panelLines: () => panelLines };
 }
 
 test("widget reflects task changes made outside this session", async () => {
@@ -62,6 +71,27 @@ test("widget reflects task changes made outside this session", async () => {
   assert.match(h.widgetLines()[0]!, /External task/);
   fs.rmSync(path.join(h.cwd, ".pi", "memory", "task.json"));
   assert.doesNotMatch(h.widgetLines()[0]!, /External task/);
+  assert.match(h.widgetLines()[0]!, /no active task/i);
+});
+
+test("task command shows current task and closes with q", async () => {
+  const h = harness("tui");
+  await h.emit("session_start");
+  await h.call({ action: "start", title: "Panel task", goal: "G" });
+  await h.command("");
+  assert.match(h.panelLines().join("\n"), /Panel task/);
+  assert.match(h.panelLines().join("\n"), /Esc \/ q \/ Enter to close/);
+  assert.equal(h.panelLines().at(-1), "─".repeat(80));
+});
+
+test("task tool persists and archives a completed task", async () => {
+  const h = harness("tui");
+  await h.emit("session_start");
+  await h.call({ action: "start", title: "Lifecycle", goal: "G", steps: ["work"] });
+  await h.call({ action: "step", id: 1, status: "doing" });
+  await h.call({ action: "step", id: 1, status: "done", evidence: "manual: verified" });
+  assert.match((await h.call({ action: "finish", evidence: "manual: verified", docs: "none: internal" })).content[0]!.text, /archived/);
+  assert.match((await h.call({ action: "show" })).content[0]!.text, /No active task/);
   assert.match(h.widgetLines()[0]!, /no active task/i);
 });
 

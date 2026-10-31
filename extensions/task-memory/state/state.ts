@@ -1,34 +1,7 @@
 // Pure data model + rules + rendering + persistence. No Pi imports (testable with plain node).
 import * as fs from "node:fs";
 import * as path from "node:path";
-
-export type StepStatus = "todo" | "doing" | "done" | "skipped";
-export interface Step { id: number; text: string; status: StepStatus; evidence?: string }
-export interface Item { id: number; text: string; why?: string }
-export interface Issue { id: number; text: string; resolved?: string }
-export interface FileRef { path: string; lines?: string; reason: string; step?: number }
-export interface Known { path: string; fact: string }
-export interface Checkpoint {
-  seq: number; at: string; next: string;
-  readNow: FileRef[]; readLater: FileRef[]; known: Known[];
-  context?: string; head?: string; dirty?: string[];
-}
-export interface Task {
-  id: string; title: string; goal: string; constraints?: string;
-  status: "active" | "done" | "abandoned";
-  createdAt: string; updatedAt: string;
-  steps: Step[]; stepSeq: number;
-  decisions: Item[]; issues: Issue[]; notes: Item[];
-  next?: string; checkpoint?: Checkpoint; checkpointSeq: number;
-  outcome?: { at: string; evidence?: string; docs?: string; reason?: string };
-}
-export interface TaskFile { version: 1; task: Task | null }
-export interface Project {
-  version: 1;
-  decisions: Item[]; conventions: Item[]; notes: Item[];
-  verify: { name: string; cmd: string }[];
-  map: { path: string; purpose: string }[];
-}
+import type { StepStatus, Step, Item, Issue, FileRef, Known, GitInfo, Checkpoint, TaskOutcome, Task, TaskFile, ProjectVerification, ProjectMapEntry, Project, Trim, StartTaskInput, StepUpdateResult, DecisionInput, IssueResolution, ProjectUpdateInput, UpdateInput, CheckpointInput, FinishTaskInput, HandoffRenderOptions, Json } from "./state.types.ts";
 
 export const LIMIT = {
   title: 80, goal: 400, constraints: 300, step: 160, evidence: 240, text: 200, why: 200,
@@ -38,7 +11,6 @@ export const LIMIT = {
 };
 
 export class MemoryError extends Error {}
-export interface Trim { n: number }
 
 export function clip(s: unknown, max: number, t?: Trim): string {
   const v = String(s ?? "").replace(/\s+/g, " ").trim();
@@ -46,20 +18,23 @@ export function clip(s: unknown, max: number, t?: Trim): string {
   if (t) t.n++;
   return v.slice(0, max - 1) + "…";
 }
+
 function clipBlock(s: unknown, max: number, t?: Trim): string {
   const v = String(s ?? "").trim();
   if (v.length <= max) return v;
   if (t) t.n++;
   return v.slice(0, max - 1) + "…";
 }
+
 const nextId = (l: { id: number }[]) => l.reduce((m, x) => Math.max(m, x.id), 0) + 1;
+
 export function slug(s: string): string {
   return s.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 40) || "task";
 }
 
 // ---------------------------------------------------------------- mutations
 
-export function startTask(file: TaskFile, p: { title?: string; goal?: string; constraints?: string }, now: string, t?: Trim): Task {
+export function startTask(file: TaskFile, p: StartTaskInput, now: string, t?: Trim): Task {
   if (file.task?.status === "active")
     throw new MemoryError(`Task "${file.task.title}" is already active. If the request belongs to it, continue it. Otherwise ask the user before abandoning it (finish abandon:true reason); never abandon on your own.`);
   const title = clip(p.title, LIMIT.title, t);
@@ -94,7 +69,7 @@ export function planSteps(task: Task, texts: string[], mode: "replace" | "append
   return added;
 }
 
-export function updateStep(task: Task, id: number, status: StepStatus, evidence?: string, t?: Trim): { step: Step; nextTodo?: Step } {
+export function updateStep(task: Task, id: number, status: StepStatus, evidence?: string, t?: Trim): StepUpdateResult {
   const step = task.steps.find((s) => s.id === id);
   if (!step) throw new MemoryError(`No step ${id}. Steps: ${task.steps.map((s) => s.id).join(", ") || "none"}.`);
   if (status === "doing") {
@@ -112,22 +87,6 @@ export function updateStep(task: Task, id: number, status: StepStatus, evidence?
 
 export function readLaterFor(task: Task, stepId: number): FileRef[] {
   return (task.checkpoint?.readLater ?? []).filter((f) => f.step === stepId);
-}
-
-export interface UpdateInput {
-  next?: string;
-  decisions?: { text: string; why?: string }[];
-  issues?: string[];
-  resolve?: { id: number; resolution: string }[];
-  notes?: string[];
-  remove?: string[]; // ids like d2, i1, n3, pd1, pc2, pn1, pv:test, pm:src/x.ts
-  project?: {
-    decisions?: { text: string; why?: string }[];
-    conventions?: string[];
-    notes?: string[];
-    verify?: { name: string; cmd: string }[];
-    map?: { path: string; purpose: string }[];
-  };
 }
 
 export function applyUpdate(task: Task | null, project: Project, u: UpdateInput, t?: Trim): string[] {
@@ -220,11 +179,7 @@ function removeId(task: Task | null, project: Project, r: string): string {
   return `removed ${r}`;
 }
 
-export interface CheckpointInput {
-  next: string; readNow?: FileRef[]; readLater?: FileRef[]; known?: Known[]; context?: string;
-}
-
-export function buildCheckpoint(seq: number, c: CheckpointInput, now: string, git: { head?: string; dirty?: string[] }, t?: Trim): Checkpoint {
+export function buildCheckpoint(seq: number, c: CheckpointInput, now: string, git: GitInfo, t?: Trim): Checkpoint {
   const next = clip(c.next, LIMIT.text, t);
   if (!next) throw new MemoryError("checkpoint needs next: the concrete next action.");
   const refs = (l: FileRef[] | undefined, cap: number, name: string) => {
@@ -249,7 +204,7 @@ export function buildCheckpoint(seq: number, c: CheckpointInput, now: string, gi
 }
 
 /** Validates first; the sequence only advances when the checkpoint is valid. */
-export function checkpoint(task: Task, c: CheckpointInput, now: string, git: { head?: string; dirty?: string[] }, t?: Trim): Checkpoint {
+export function checkpoint(task: Task, c: CheckpointInput, now: string, git: GitInfo, t?: Trim): Checkpoint {
   const cp = buildCheckpoint(task.checkpointSeq + 1, c, now, git, t);
   task.checkpointSeq = cp.seq;
   task.checkpoint = cp;
@@ -257,7 +212,7 @@ export function checkpoint(task: Task, c: CheckpointInput, now: string, git: { h
   return cp;
 }
 
-export function finishTask(file: TaskFile, p: { evidence?: string; docs?: string; abandon?: boolean; reason?: string }, now: string, t?: Trim): Task {
+export function finishTask(file: TaskFile, p: FinishTaskInput, now: string, t?: Trim): Task {
   const task = requireActive(file);
   if (p.abandon) {
     const reason = clip(p.reason || p.evidence, LIMIT.text, t);
@@ -337,7 +292,7 @@ export function renderTask(task: Task | null): string {
 
 export function renderHandoff(
   task: Task | null, project: Project,
-  opts: { auto?: boolean; touched?: string[]; now?: string; checkpoint?: Checkpoint } = {},
+  opts: HandoffRenderOptions = {},
 ): string {
   const cp = opts.checkpoint ?? task?.checkpoint;
   const head = opts.auto
@@ -409,7 +364,6 @@ export function inferAction(args: unknown): Record<string, unknown> {
 
 export const emptyProject = (): Project => ({ version: 1, decisions: [], conventions: [], notes: [], verify: [], map: [] });
 
-type Json = Record<string, unknown>;
 function readJson(file: string): Json | undefined {
   if (!fs.existsSync(file)) return undefined;
   try { return JSON.parse(fs.readFileSync(file, "utf8")) as Json; }

@@ -1,7 +1,5 @@
 // Pure helpers: tool classification, UI phase, context thresholds. No Pi imports.
-
-export type Phase = "idle" | "thinking" | "planning" | "exploring" | "coding" | "verifying" | "handoff" | "compacting" | "resuming";
-export type ToolKind = "edit" | "read" | "verify" | "web" | "task" | "checkpoint" | "other";
+import type { Phase, ToolKind, ToolArguments, PhaseInput, Level, Thresholds } from "./phase.types.ts";
 
 const EDIT = new Set(["edit", "write", "ast_grep_replace"]);
 const READ = new Set(["read", "grep", "find", "ls", "read_symbol", "read_enclosing", "module_report", "project_report", "symbol_search", "ast_grep_search", "ast_grep_outline", "lsp_navigation"]);
@@ -11,24 +9,21 @@ const WEB = new Set(["web_search", "fetch_content", "get_search_content", "sourc
 const VERIFY_RE = /\b(test|tests|vitest|jest|pytest|mocha|tsc|typecheck|lint|eslint|biome|ruff|mypy|cargo (test|check|clippy)|go (test|vet)|build|make check)\b/;
 const READONLY_RE = /^\s*(ls|cat|head|tail|wc|grep|rg|find|fd|tree|pwd|echo|git (status|log|diff|show|branch))\b/;
 
-export function classifyTool(name: string, args: any): ToolKind {
-  if (name === "task") return args?.action === "checkpoint" ? "checkpoint" : "task";
+export function classifyTool(name: string, args: unknown): ToolKind {
+  const input = args as ToolArguments | null | undefined;
+
+  if (name === "task") return input?.action === "checkpoint" ? "checkpoint" : "task";
   if (EDIT.has(name)) return "edit";
   if (READ.has(name)) return "read";
   if (VERIFY.has(name)) return "verify";
   if (WEB.has(name)) return "web";
   if (name === "bash") {
-    const cmd = String(args?.command ?? "");
+    const cmd = String(input?.command ?? "");
     if (READONLY_RE.test(cmd) && !VERIFY_RE.test(cmd)) return "read";
     if (VERIFY_RE.test(cmd)) return "verify";
     return "other";
   }
   return "other";
-}
-
-export interface PhaseInput {
-  running: boolean; compacting: boolean; handoff: boolean; resuming: boolean;
-  active: ToolKind[]; last?: ToolKind; hasTask: boolean; stepDoing: boolean;
 }
 
 const PRIORITY: ToolKind[] = ["checkpoint", "verify", "edit", "task", "web", "read", "other"];
@@ -61,9 +56,6 @@ export const PHASE_ICON: Record<Phase, string> = {
   idle: "○", thinking: "…", planning: "◇", exploring: "◎", coding: "●",
   verifying: "◆", handoff: "⇄", compacting: "↻", resuming: "↺",
 };
-
-export type Level = "ok" | "warn" | "must" | "unknown";
-export interface Thresholds { warn: number; must: number }
 
 export function readThresholds(env: Record<string, string | undefined>): Thresholds {
   const num = (v: string | undefined, d: number) => { const n = Number(v); return Number.isFinite(n) && n > 0 && n < 100 ? n : d; };

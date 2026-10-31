@@ -3,13 +3,14 @@ import assert from "node:assert/strict";
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
-import * as S from "../task-memory/state.ts";
-import { classifyTool, derivePhase, contextLevel, readThresholds } from "../task-memory/phase.ts";
+import * as S from "../extensions/task-memory/state/state.ts";
+import type * as StateTypes from "../extensions/task-memory/state/state.types.ts";
+import { classifyTool, derivePhase, contextLevel, readThresholds } from "../extensions/task-memory/phase/phase.ts";
 
 const NOW = "2026-10-04T10:00:00.000Z";
 
 test("task lifecycle with evidence rules", () => {
-  const f: S.TaskFile = { version: 1, task: null };
+  const f: StateTypes.TaskFile = { version: 1, task: null };
   const t = S.startTask(f, { title: "Rate limit", goal: "5/min per IP" }, NOW);
   assert.throws(() => S.startTask(f, { title: "x", goal: "y" }, NOW), S.MemoryError);
   S.planSteps(t, ["a", "b"]);
@@ -27,10 +28,10 @@ test("task lifecycle with evidence rules", () => {
 });
 
 test("caps, updates, removes, project upserts", () => {
-  const f: S.TaskFile = { version: 1, task: null };
+  const f: StateTypes.TaskFile = { version: 1, task: null };
   const t = S.startTask(f, { title: "T", goal: "G" }, NOW);
   const p = S.emptyProject();
-  const trim: S.Trim = { n: 0 };
+  const trim: StateTypes.Trim = { n: 0 };
   S.applyUpdate(t, p, { decisions: [{ text: "x".repeat(500) }] }, trim);
   assert.equal(trim.n, 1);
   for (let i = 1; i < S.LIMIT.decisions; i++) S.applyUpdate(t, p, { decisions: [{ text: `d${i}` }] });
@@ -44,7 +45,7 @@ test("caps, updates, removes, project upserts", () => {
 });
 
 test("checkpoint + handoff rendering", () => {
-  const f: S.TaskFile = { version: 1, task: null };
+  const f: StateTypes.TaskFile = { version: 1, task: null };
   const t = S.startTask(f, { title: "T", goal: "G" }, NOW);
   S.planSteps(t, ["one", "two"]);
   assert.throws(() => S.checkpoint(t, { next: "" }, NOW, {}), /next/);
@@ -62,7 +63,7 @@ test("checkpoint + handoff rendering", () => {
 
 test("persistence roundtrip + gitignore + bad json", () => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "tm-"));
-  const f: S.TaskFile = { version: 1, task: null };
+  const f: StateTypes.TaskFile = { version: 1, task: null };
   S.startTask(f, { title: "T", goal: "G" }, NOW);
   S.saveTaskFile(dir, f);
   assert.equal(fs.readFileSync(path.join(dir, ".gitignore"), "utf8"), "*\n");
@@ -97,7 +98,7 @@ test("one-off handoff without a task", () => {
 });
 
 test("checkpoint caps; seq only advances when valid; start never auto-abandons", () => {
-  const f: S.TaskFile = { version: 1, task: null };
+  const f: StateTypes.TaskFile = { version: 1, task: null };
   const t = S.startTask(f, { title: "T", goal: "G" }, NOW);
   const many = Array.from({ length: 9 }, (_, i) => ({ path: `f${i}`, reason: "r" }));
   assert.throws(() => S.checkpoint(t, { next: "x", readNow: many }, NOW, {}), /max 8/);

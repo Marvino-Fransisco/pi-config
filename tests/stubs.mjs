@@ -7,6 +7,11 @@ export function findCutPoint(_entries, startIndex) {
   return { firstKeptEntryIndex: startIndex, turnStartIndex: -1, isSplitTurn: false };
 }
 
+export class CustomEditor {
+  render() { return this.lines ?? []; }
+  isShowingAutocomplete() { return this.autocomplete ?? false; }
+}
+
 export class Text {
   constructor(text) { this.text = text; }
   render() { return [this.text]; }
