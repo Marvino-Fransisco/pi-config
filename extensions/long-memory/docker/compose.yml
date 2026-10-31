@@ -1,0 +1,24 @@
+name: long-memory
+services:
+  postgres:
+    build: .
+    image: pi-long-memory-postgres:pg18
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: pi_memory
+      POSTGRES_USER: memory_owner
+      POSTGRES_PASSWORD: ${MEMORY_DB_PASSWORD:?Set MEMORY_DB_PASSWORD}
+      MEMORY_READER_PASSWORD: ${MEMORY_READER_PASSWORD:?Set reader password}
+    ports:
+      - "127.0.0.1:${MEMORY_DB_PORT:-55432}:5432"
+    volumes:
+      - memory_data:/var/lib/postgresql
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - pg_isready -h 127.0.0.1 -U memory_owner -d pi_memory
+      interval: 5s
+      timeout: 3s
+      retries: 10
+volumes:
+  memory_data:

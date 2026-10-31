@@ -14,6 +14,14 @@ export class CustomEditor {
   isShowingAutocomplete() { return this.autocomplete ?? false; }
 }
 
+export class Input {
+  focused = false;
+  value = "";
+  handleInput(data) { if (data === "return") this.onSubmit?.(this.value); else this.value += data; }
+  render() { return [this.value]; }
+  invalidate() {}
+}
+
 export class Text {
   constructor(text) { this.text = text; }
   render() { return [this.text]; }
