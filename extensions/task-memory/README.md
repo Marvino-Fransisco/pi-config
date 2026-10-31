@@ -21,7 +21,7 @@ Pi extension that keeps long-running work resumable across context compaction an
 - **New session**: saved state is loaded with a one-line notice. The agent continues only if your request relates to it, you say "continue", or you run `/task resume`. Resume checks checkpoint Git HEAD, branch and working-tree status; dirty files require revalidation even when the status is unchanged. After `/tree`, the agent is warned to reconcile disk memory with the conversation branch.
 - **Progress sync**: for an engaged active task, tracked edits and changes detected in Git since the last progress update trigger one short extra turn. Project-only updates do not count as task progress. Pre-existing Git changes are captured as a baseline.
 - **Memory errors**: failures to read task or project memory are reported to the user and agent instead of being treated as empty memory.
-- **Phase widget** (below the editor): `idle · thinking · planning · exploring · coding · verifying · handoff · compacting · resuming`, with animated blue active phases, the task title, step progress, and a context warning line.
+- **Phase widget** (below the editor): `idle · thinking · planning · exploring · coding · verifying · handoff · compacting · resuming`, with an animated working star, blue active phases, the task title, step progress, and a context warning line.
 
 ## Commands
 

@@ -6,6 +6,7 @@ import { statusLine } from "../state/state.ts";
 
 const BLUE = "\x1b[38;2;90;175;255m";
 const RESET = "\x1b[39m";
+const STARS = ["·", "∙", "⋅", "∗", "✢", "✣", "✤", "✥", "✳", "✺", "❄", "✺", "✳", "✥", "✤", "✣", "✢", "∗", "⋅", "∙"];
 
 function animatePhase(text: string, frame: number): string {
   return [...text].map((char, index) => {
@@ -48,7 +49,8 @@ export function installWidget(
           stepDoing: task?.steps.some((s) => s.status === "doing") ?? false,
         });
 
-        const icon = `${BLUE}${PHASE_ICON[phase]}${RESET}`;
+        const active = input.running || input.compacting || input.resuming;
+        const icon = `${BLUE}${active ? STARS[Math.floor(frame / 3) % STARS.length] : PHASE_ICON[phase]}${RESET}`;
         const label = phase === "idle" ? theme.fg("dim", phase) : animatePhase(phase, frame);
         const head = `${icon} ${label}`;
         const status = `${head}${theme.fg("muted", ` · ${statusLine(task)}`)}`;

@@ -1,7 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import extension from "../extensions/ui/index.ts";
-import { workingFrame } from "../extensions/ui/widget/working.ts";
 import { contextReport, registerContextCommand } from "../extensions/ui/context.ts";
 import { installContextFooter } from "../extensions/ui/footer/context-footer.ts";
 import { createNotes } from "../extensions/task-memory/ui/notes.ts";
@@ -147,40 +146,19 @@ test("model footer is hidden only when the shared task row is available", () => 
   assert.deepEqual(footer.render(80), []);
 });
 
-test("working animation rotates eight words and stops when settled", async () => {
-  const strip = (text: string) => text.replace(/\x1b\[[\d;]*m/g, "");
-  const words = Array.from({ length: 8 }, (_, index) => strip(workingFrame(index * 25)));
-  assert.equal(new Set(words).size, 8);
-  assert.equal(strip(workingFrame(200)), words[0]);
-  assert.notEqual(workingFrame(0), workingFrame(1));
+test("working indicator is hidden only when the task widget is available", () => {
   const handlers = new Map<string, (event: unknown, ctx: any) => void>();
-  const messages: Array<string | undefined> = [];
-  let indicator: { frames: string[] } | undefined;
+  const visibility: boolean[] = [];
+  let available = true;
   const ctx = { mode: "tui", ui: {
-    setWorkingIndicator: (value: typeof indicator) => { indicator = value; },
-    setWorkingMessage: (value?: string) => { messages.push(value); },
+    setWorkingVisible: (value: boolean) => { visibility.push(value); },
     setEditorComponent: () => {}, setFooter: () => {}, setWidget: () => {},
   } };
-  extension({ registerCommand: () => {}, on: (name: string, handler: (event: unknown, ctx: any) => void) => { handlers.set(name, handler); } } as never);
-  handlers.get("session_start")!({}, ctx);
-  assert.ok(indicator!.frames.length > 1);
-  assert.ok(new Set(indicator!.frames.map(strip)).size > 8);
-  assert.equal(strip(indicator!.frames[0]!), "·");
-  assert.equal(indicator!.frames[0], indicator!.frames[1]);
-  assert.match(indicator!.frames[0]!, /^\x1b\[38;2;90;175;255m/);
-  assert.ok(indicator!.frames.some((frame) => strip(frame) === "❄"));
+  const events = { on() {}, emit(name: string, request: { available: boolean }) { if (name === "task-memory:footer:available") request.available = available; } };
+  extension({ events, registerCommand: () => {}, on: (name: string, handler: (event: unknown, ctx: any) => void) => { handlers.set(name, handler); } } as never);
   handlers.get("agent_start")!({}, ctx);
-  await new Promise((resolve) => setTimeout(resolve, 150));
-  assert.ok(messages.length >= 2);
-  handlers.get("agent_settled")!({}, ctx);
-  const count = messages.length;
-  await new Promise((resolve) => setTimeout(resolve, 150));
-  assert.equal(messages.length, count);
-  assert.equal(messages.at(-1), undefined);
+  available = false;
   handlers.get("agent_start")!({}, ctx);
   handlers.get("session_shutdown")!({}, ctx);
-  const shutdownCount = messages.length;
-  await new Promise((resolve) => setTimeout(resolve, 150));
-  assert.equal(messages.length, shutdownCount);
-  assert.equal(indicator, undefined);
+  assert.deepEqual(visibility, [false, true, true]);
 });

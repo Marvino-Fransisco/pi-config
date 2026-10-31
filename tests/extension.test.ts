@@ -311,20 +311,19 @@ test("unreadable memory is reported rather than treated as empty", async () => {
   assert.match(h.messages.at(-1)!.content, /failed to load memory after compaction/);
 });
 
-test("thinking phase uses a distinct icon", async () => {
+test("working star animates beside the current phase and stops when settled", async () => {
   const h = harness("tui");
   await h.emit("session_start");
   await h.emit("agent_start");
   const first = h.widgetLines()[0]!;
-  assert.match(first.replace(/\x1b\[[\d;]*m/g, ""), /✦ thinking/);
-  await new Promise((resolve) => setTimeout(resolve, 150));
+  assert.match(first.replace(/\x1b\[[\d;]*m/g, ""), /· thinking/);
+  await new Promise((resolve) => setTimeout(resolve, 400));
   const second = h.widgetLines()[0]!;
-  const icon = "\x1b[38;2;90;175;255m✦\x1b[39m ";
-  assert.ok(first.startsWith(icon) && second.startsWith(icon));
-  assert.notEqual(second, first);
+  assert.notEqual(first.split("\x1b[39m")[0], second.split("\x1b[39m")[0]);
   await h.emit("tool_execution_start", { toolName: "edit", toolCallId: "icon-edit", args: { path: "a.ts" } });
-  assert.ok(h.widgetLines()[0]!.startsWith("\x1b[38;2;90;175;255m●\x1b[39m "));
+  assert.match(h.widgetLines()[0]!.replace(/\x1b\[[\d;]*m/g, ""), /coding/);
   await h.emit("agent_settled");
+  assert.match(h.widgetLines()[0]!.replace(/\x1b\[[\d;]*m/g, ""), /○ idle/);
 });
 
 test("threshold command validates, persists and applies independent values", async () => {
