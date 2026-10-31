@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import extension from "../extensions/ui/tui-custom.ts";
+import extension from "../extensions/ui/index.ts";
 
 test("installs the editor, footer and topbar with shared branch data", () => {
   let start: ((event: unknown, ctx: unknown) => void) | undefined;
