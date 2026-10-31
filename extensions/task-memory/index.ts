@@ -3,6 +3,7 @@ import type { ExtensionAPI, ExtensionContext, SessionBoundaryDraft } from "@eare
 import { Key, Text } from "@earendil-works/pi-tui";
 import * as fs from "node:fs";
 import * as path from "node:path";
+import { createHash } from "node:crypto";
 import * as S from "./state/state.ts";
 import type * as StateTypes from "./state/state.types.ts";
 import { classifyTool, contextLevel, readThresholds } from "./phase/phase.ts";
@@ -47,6 +48,7 @@ export default function (pi: ExtensionAPI) {
   let syncedSeq = 0;
   let syncSent = false;
   let taskEngaged = false;
+  let gitBaseline: string | undefined;
   let memoryError: string | undefined;
 
   let handoff: Handoff = "none";
@@ -140,6 +142,7 @@ export default function (pi: ExtensionAPI) {
     lastCompactFromUs = false;
     pendingInject = undefined;
     scratchSeq = 0;
+    gitBaseline = undefined;
     memoryError = undefined;
   }
 
@@ -163,6 +166,16 @@ export default function (pi: ExtensionAPI) {
         : undefined;
       return { branch: b.code === 0 ? b.stdout.trim() || "(detached)" : undefined, head: h.code === 0 ? h.stdout.trim() : undefined, dirty };
     } catch { return {}; }
+  }
+
+  async function gitFingerprint(): Promise<string | undefined> {
+    try {
+      const status = await pi.exec("git", ["-C", root, "status", "--porcelain", "--untracked-files=all"], { timeout: 5000 });
+      const diff = await pi.exec("git", ["-C", root, "diff", "--no-ext-diff", "--binary", "HEAD"], { timeout: 5000 });
+      if (status.killed || diff.killed || status.code !== 0 || diff.code !== 0) return undefined;
+      const lines = status.stdout.split("\n").filter((line) => !line.slice(3).startsWith(".pi/memory/"));
+      return createHash("sha256").update(lines.join("\n")).update("\0").update(diff.stdout).digest("hex");
+    } catch { return undefined; }
   }
 
   function deferCompaction(): void {
@@ -279,7 +292,7 @@ export default function (pi: ExtensionAPI) {
     return { message: { customType: "task-memory-state", content: inj.content, display: false, details: { hash: inj.hash } } };
   });
 
-  pi.on("agent_start", async () => { running = true; render(); });
+  pi.on("agent_start", async () => { running = true; gitBaseline = await gitFingerprint(); render(); });
   pi.on("turn_start", async () => { if (compacting) { compacting = false; render(); } });
   pi.on("agent_settled", async () => {
     running = false; resuming = false; compacting = false;
@@ -362,7 +375,11 @@ export default function (pi: ExtensionAPI) {
       settleAsked = true; warned = true; handoff = "settle"; terminateAfter = true; render();
       return { entries: [...e.entries, msg("task-memory-handoff", P.SETTLE_MSG(p, touchedText(), cachedTask !== null))], continue: true };
     }
-    if (taskEngaged && cachedTask && editSeq > syncedSeq && !syncSent && runEdited.size) {
+    if (taskEngaged && cachedTask && !syncSent && gitBaseline !== undefined) {
+      const current = await gitFingerprint();
+      if (current !== undefined && current !== gitBaseline) runEdited.add("Git working tree (inspect changes)");
+    }
+    if (taskEngaged && cachedTask && !syncSent && (editSeq > syncedSeq || runEdited.has("Git working tree (inspect changes)"))) {
       syncSent = true;
       return { entries: [...e.entries, msg("task-memory-sync", P.SYNC_MSG([...runEdited]))], continue: true };
     }
@@ -447,7 +464,10 @@ export default function (pi: ExtensionAPI) {
       const h = S.stateHash(file.task, project);
       if (ck?.compact) { compactNow = { summary: ck.summary, hash: h, seq: ck.seq }; compacting = true; }
       else if (ck) fresh = { summary: ck.summary, hash: h, seq: ck.seq };
-      if (p.action !== "show") syncedSeq = editSeq;
+      const recordsProgress = p.action === "checkpoint" || p.action === "finish" ||
+        (p.action === "step" && (p.status === "done" || p.status === "skipped")) ||
+        (p.action === "update" && !!(p.next || p.decisions?.length || p.issues?.length || p.resolve?.length || p.notes?.length));
+      if (recordsProgress) { syncedSeq = editSeq; runEdited.delete("Git working tree (inspect changes)"); gitBaseline = await gitFingerprint(); }
       if (t.n) text += `\n(trimmed ${t.n} long field${t.n > 1 ? "s" : ""}; keep memory terse)`;
       render();
       return { content: [{ type: "text", text }], details: { hash: h, action: p.action }, terminate };

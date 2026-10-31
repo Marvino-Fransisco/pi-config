@@ -38,7 +38,7 @@ export const MANUAL_MSG = (focus: string, touched: string, hasTask: boolean): st
   `[task-memory] The user ran /compact. Write a handoff first. ${HOW(hasTask)}${focus ? `\nFocus requested by the user: ${focus}` : ""} Do not do any other work.${FILES(touched)}`;
 
 export const SYNC_MSG = (files: string[]): string =>
-  `[task-memory] You changed files (${files.slice(0, 10).join(", ")}) but did not update the active task. Record progress now with the task tool (step status + evidence, decisions, issues, next) in one batch, then reply with one short line.`;
+  `[task-memory] Edits or working-tree changes were detected (${files.slice(0, 10).join(", ")}) after the last task progress update. Inspect and preserve any user changes; record relevant task progress with the task tool (step status + evidence, decisions, issues, next) in one batch, then reply with one short line.`;
 
 export const PROJECT_PREFIX =
   "[task-memory] Project memory (.pi/memory/project.json): durable knowledge about this repo. Use it instead of re-exploring; it applies to any request here.";

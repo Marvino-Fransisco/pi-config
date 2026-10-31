@@ -201,6 +201,31 @@ test("resume detects changed Git state and conversation branch navigation", asyn
   assert.match((await h.emit("before_agent_start"))!.message!.content, /Conversation branch changed/);
 });
 
+test("progress sync detects Git changes and ignores project-only updates", async () => {
+  const h = harness("tui");
+  await h.emit("session_start");
+  await h.call({ action: "start", title: "T", goal: "G" });
+  h.git.status = " M existing.ts\n";
+  h.git.diff = "original";
+  await h.emit("agent_start");
+  assert.equal(await h.emit("agent_before_settle", { entries: [], outcome: "completed" }), undefined);
+  h.git.diff = "changed by shell";
+  await h.call({ action: "update", project: { notes: ["a convention"] } });
+  const result = await h.emit("agent_before_settle", { entries: [], outcome: "completed" });
+  assert.equal(result?.entries?.[0]?.customType, "task-memory-sync");
+});
+
+test("project-only updates do not acknowledge tracked edits", async () => {
+  const h = harness("tui");
+  await h.emit("session_start");
+  await h.call({ action: "start", title: "T", goal: "G" });
+  await h.emit("agent_start");
+  await h.emit("tool_execution_start", { toolName: "edit", toolCallId: "edit1", args: { path: "a.ts" } });
+  await h.emit("tool_execution_end", { toolName: "edit", toolCallId: "edit1", isError: false });
+  await h.call({ action: "update", project: { notes: ["project fact"] } });
+  assert.equal((await h.emit("agent_before_settle", { entries: [], outcome: "completed" }))?.entries?.[0]?.customType, "task-memory-sync");
+});
+
 test("unreadable memory is reported rather than treated as empty", async () => {
   const h = harness("tui");
   await h.emit("session_start");
