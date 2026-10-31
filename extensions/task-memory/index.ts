@@ -53,6 +53,7 @@ export default function (pi: ExtensionAPI) {
   let warned = false;
   let settleAsked = false;
   let mustTurns = 0;
+  let deferredCompaction = false;
   let baseline: number | undefined;
   let needBaseline = false;
   let fresh: Saved | undefined;      // checkpoint saved without compaction, still current
@@ -102,6 +103,7 @@ export default function (pi: ExtensionAPI) {
     terminateAfter = false;
     warned = false;
     mustTurns = 0;
+    deferredCompaction = false;
     fresh = undefined;
     compactNow = undefined;
     touched.clear();
@@ -122,6 +124,7 @@ export default function (pi: ExtensionAPI) {
     terminateAfter = false;
     warned = false;
     mustTurns = 0;
+    deferredCompaction = false;
     baseline = undefined;
     needBaseline = false;
     fresh = undefined;
@@ -152,13 +155,12 @@ export default function (pi: ExtensionAPI) {
     } catch { return {}; }
   }
 
-  function fallbackDraft(ctx: ExtensionContext): SessionBoundaryDraft {
-    const task = safeTask(), project = safeProject();
-    const summary = S.renderHandoff(task, project, { auto: true, now: now(), touched: touchedList() });
-    const draft = compactionDraft(pi, ctx, summary, { auto: true, hash: S.stateHash(task, project) });
-    notify("task-memory: no handoff was written in time; compacted with an automatic one", "warning");
-    newSegment(); compacting = true; render();
-    return draft;
+  function deferCompaction(): void {
+    handoff = "none";
+    terminateAfter = false;
+    deferredCompaction = true;
+    notify("task-memory: handoff unavailable; conversation retained for Pi's default compaction", "warning");
+    render();
   }
 
   function refreshInject(ctx: ExtensionContext): void {
@@ -225,7 +227,7 @@ export default function (pi: ExtensionAPI) {
 
   pi.on("session_tree", async (_e, ctx) => {
     ctxRef = ctx;
-    handoff = "none"; terminateAfter = false; warned = false; mustTurns = 0;
+    handoff = "none"; terminateAfter = false; warned = false; mustTurns = 0; deferredCompaction = false;
     fresh = undefined; compactNow = undefined; baseline = undefined; needBaseline = false;
     refreshInject(ctx); render();
   });
@@ -293,12 +295,13 @@ export default function (pi: ExtensionAPI) {
     const ending = e.toolResults.length === 0;
 
     if (handoff === "must") {
-      if (++mustTurns >= 3) return { entries: [...e.entries, fallbackDraft(ctx)] };
+      if (++mustTurns >= 3) deferCompaction();
       return;
     }
+    if (deferredCompaction) return;
     const { p, lvl } = level(ctx);
     if (lvl === "must" && p !== null) {
-      if (ending && !ctx.hasUI) return { entries: [...e.entries, fallbackDraft(ctx)] }; // headless: never add a turn after the final answer
+      if (ending && !ctx.hasUI) { deferCompaction(); return; }
       const alreadyAsked = handoff === "settle" || handoff === "manual";
       handoff = "must"; mustTurns = 0;
       if (ending) terminateAfter = true;
@@ -317,11 +320,10 @@ export default function (pi: ExtensionAPI) {
   pi.on("agent_before_settle", async (e, ctx) => {
     ctxRef = ctx;
     if (e.outcome !== "completed") return;
-    if (handoff === "must" || handoff === "manual") return { entries: [...e.entries, fallbackDraft(ctx)] }; // required handoff not written: use an automatic one
+    if (handoff === "must" || handoff === "manual") { deferCompaction(); return; }
     const { p, lvl } = level(ctx);
-    // Headless (print/json): an extra turn would replace the printed answer, so only a required compaction happens.
-    if (!ctx.hasUI) return lvl === "must" ? { entries: [...e.entries, fallbackDraft(ctx)] } : undefined;
-    if (!settleAsked && (handoff === "boundary" || lvl === "warn" || lvl === "must")) {
+    if (!ctx.hasUI) { if (!deferredCompaction && lvl === "must") deferCompaction(); return; }
+    if (!deferredCompaction && !settleAsked && (handoff === "boundary" || lvl === "warn" || lvl === "must")) {
       settleAsked = true; warned = true; handoff = "settle"; terminateAfter = true; render();
       return { entries: [...e.entries, msg("task-memory-handoff", P.SETTLE_MSG(p, touchedText(), cachedTask !== null))], continue: true };
     }
@@ -342,7 +344,7 @@ export default function (pi: ExtensionAPI) {
         details: { source: "task-memory", hash: f.hash, checkpoint: f.seq },
       } };
     }
-    if (e.reason === "manual" && !running && ctx.hasUI) {
+    if (e.reason === "manual" && !running && ctx.hasUI && !deferredCompaction) {
       handoff = "manual"; terminateAfter = true; render();
       const content = P.MANUAL_MSG(e.customInstructions ?? "", touchedText(), cachedTask !== null);
       notify("task-memory: the agent writes a handoff first, then compacts");

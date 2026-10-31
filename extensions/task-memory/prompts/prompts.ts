@@ -47,4 +47,4 @@ export const RESUME_PREFIX =
   '[task-memory] Saved task from an earlier session. Continue it only if the user\'s request relates to it or they say continue/resume; otherwise ignore it. When resuming, re-read only the "Read now" items, then do the next action.';
 
 export const POST_COMPACT_PREFIX =
-  "[task-memory] Context was compacted by Pi's default summarizer. This saved task state is authoritative where it differs from the summary. Write a fresh handoff (task checkpoint) at the next step boundary.";
+  "[task-memory] Context was compacted by Pi's default summarizer. Saved task state may be stale; reconcile it with the summary and recent messages before continuing. Write a fresh handoff (task checkpoint) at the next step boundary.";

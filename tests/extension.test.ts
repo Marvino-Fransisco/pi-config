@@ -131,7 +131,7 @@ test("task tool persists and archives a completed task", async () => {
 const busy = { entries: [], toolResults: [{}], outcome: "completed" };
 const ending = { entries: [], toolResults: [], outcome: "completed" };
 
-test("75%: mandatory handoff blocks other tools; automatic handoff after 3 ignored turns", async () => {
+test("75%: ignored handoff retains conversation and releases tools until Pi compacts", async () => {
   const h = harness("tui");
   await h.emit("session_start");
   await h.call({ action: "start", title: "T", goal: "G", steps: ["a", "b"] });
@@ -144,9 +144,16 @@ test("75%: mandatory handoff blocks other tools; automatic handoff after 3 ignor
   assert.equal(await h.emit("turn_end", busy), undefined);
   assert.equal(await h.emit("turn_end", busy), undefined);
   const r4 = await h.emit("turn_end", busy);
-  assert.equal(r4?.entries?.[0]?.type, "compaction");
-  assert.equal(r4?.entries?.[0]?.details?.auto, true);
+  assert.equal(r4, undefined);
   assert.equal(await h.emit("tool_call", { toolName: "read" }), undefined);
+  assert.equal(await h.emit("turn_end", busy), undefined);
+  assert.equal(await h.emit("agent_before_settle", { entries: [], outcome: "completed" }), undefined);
+  assert.equal(await h.emit("session_before_compact", { reason: "manual", preparation: {} }), undefined);
+  await h.emit("session_compact");
+  h.usage.percent = 5;
+  await h.emit("turn_end", busy);
+  h.usage.percent = 80;
+  assert.equal((await h.emit("turn_end", busy))?.entries?.[0]?.customType, "task-memory-must");
 });
 
 test("checkpoint without `action` is inferred; mandatory handoff compacts mid-run", async () => {
@@ -207,7 +214,7 @@ test("threshold command validates, persists and applies independent values", asy
   assert.equal((await h.emit("turn_end", busy))?.entries?.[0]?.customType, "task-memory-must");
 });
 
-test("print mode: no extra turn after the final answer; 75% uses an automatic handoff", async () => {
+test("print mode: no extra turn or lossy compaction after the final answer", async () => {
   const h = harness("print");
   await h.emit("session_start");
   h.usage.percent = 55;
@@ -216,6 +223,6 @@ test("print mode: no extra turn after the final answer; 75% uses an automatic ha
   await h.emit("agent_settled");
   h.usage.percent = 80;
   const r = await h.emit("turn_end", ending);
-  assert.equal(r?.entries?.[0]?.type, "compaction");
-  assert.equal(r?.continue, undefined);
+  assert.equal(r, undefined);
+  assert.equal(await h.emit("agent_before_settle", { entries: [], outcome: "completed" }), undefined);
 });

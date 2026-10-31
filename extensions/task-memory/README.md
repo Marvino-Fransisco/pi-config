@@ -14,10 +14,10 @@ Pi extension that keeps long-running work resumable across context compaction an
 - **Handoff at compaction**: before compacting, the agent writes a checkpoint (next action, *Read now* / *Read later* / *Known* files, critical context). The checkpoint becomes the compaction summary. The last min(20k tokens, 5% of the window) stays as raw messages.
 - **Context thresholds**
   - ≥ 50% by default: warning. The agent writes a handoff and compacts at the next step boundary, or when the run ends.
-  - ≥ 75% by default: mandatory. Every tool except `task` is blocked until the handoff exists; after 3 ignored turns an automatic handoff is used.
-  - `/compact` also has the agent write the handoff first; if it doesn't, an automatic handoff is used.
-  - Pi's own auto-compaction stays on as a safety net. If it fires, the saved task state is re-injected afterwards.
-- **Headless runs** (`pi -p`, `--mode json`): no turn is added after the final answer, so the printed answer stays intact. The end-of-run handoff and the progress reminder are skipped; at the mandatory threshold an automatic handoff is used.
+  - ≥ 75% by default: mandatory. Every tool except `task` is blocked until the handoff exists. After 3 ignored turns, the conversation is retained and the block is lifted; Pi's normal auto-compaction or a subsequent `/compact` can summarize it.
+  - `/compact` also has the agent write the handoff first. If it doesn't, the conversation is retained; run `/compact` again to use Pi's default summarizer.
+  - Pi's own auto-compaction stays on as a safety net. If it fires, the saved task state is re-injected afterwards and may need reconciliation with the summary.
+- **Headless runs** (`pi -p`, `--mode json`): no turn is added after the final answer, so the printed answer stays intact. The end-of-run handoff and the progress reminder are skipped; if a handoff is unavailable at the mandatory threshold, the conversation is retained for Pi's normal compaction.
 - **New session**: saved state is loaded silently, with a one-line notice. The agent continues only if your request relates to it, you say "continue", or you run `/task resume`.
 - **Progress sync**: if a run edits files during an active task but never updates it, one short extra turn records progress.
 - **Phase widget** (below the editor): `idle · thinking · planning · exploring · coding · verifying · handoff · compacting · resuming`, with animated blue active phases, the task title, step progress, and a context warning line.
