@@ -44,7 +44,7 @@ export const PROJECT_PREFIX =
   "[task-memory] Project memory (.pi/memory/project.json): durable knowledge about this repo. Use it instead of re-exploring; it applies to any request here.";
 
 export const RESUME_PREFIX =
-  '[task-memory] Saved task from an earlier session. Continue it only if the user\'s request relates to it or they say continue/resume; otherwise ignore it. When resuming, re-read only the "Read now" items, then do the next action.';
+  '[task-memory] Saved task from an earlier session. Continue it only if the user\'s request relates to it or they say continue/resume; otherwise ignore it. When resuming, check the repository and revalidate stale or dirty files and facts before relying on them, then read the "Read now" items and do the next action.';
 
 export const POST_COMPACT_PREFIX =
   "[task-memory] Context was compacted by Pi's default summarizer. Saved task state may be stale; reconcile it with the summary and recent messages before continuing. Write a fresh handoff (task checkpoint) at the next step boundary.";

@@ -32,6 +32,7 @@ export interface Known {
 }
 
 export interface GitInfo {
+  branch?: string;
   head?: string;
   dirty?: string[];
 }

@@ -8,7 +8,7 @@ import extension from "../extensions/task-memory/index.ts";
 
 type Handler = (event: unknown, ctx: unknown) => unknown;
 type Entry = { type: string; customType?: string; details?: Record<string, unknown> };
-type Result = { entries?: Entry[]; continue?: boolean; block?: boolean } | undefined;
+type Result = { entries?: Entry[]; continue?: boolean; block?: boolean; message?: { content: string } } | undefined;
 type ToolResult = { content: Array<{ text: string }>; terminate?: boolean };
 type Tool = {
   prepareArguments: (args: unknown) => Record<string, unknown>;
@@ -47,15 +47,17 @@ function harness(mode: "tui" | "print") {
   fs.mkdirSync(path.join(cwd, ".git"));
   const usage = { percent: 5 as number | null };
   const notifications: string[] = [];
+  const git = { head: "abc123", branch: "main", status: "", diff: "" };
+  const messages: Array<{ content: string }> = [];
   const pi = {
     on: (name: string, h: Handler) => { handlers.set(name, [...(handlers.get(name) ?? []), h]); return () => {}; },
     registerTool: (t: Tool) => { tool = t; },
     registerMessageRenderer: () => {},
     registerCommand: (_name: string, c: typeof command) => { command = c; },
     registerShortcut: (_key: string, s: typeof shortcut) => { shortcut = s; },
-    exec: async () => ({ code: 1, stdout: "", stderr: "", killed: false }),
+    exec: async (_cmd: string, args: string[]) => ({ code: 0, stdout: args.includes("rev-parse") ? git.head : args.includes("branch") ? git.branch : args.includes("diff") ? git.diff : git.status, stderr: "", killed: false }),
     getSettings: () => ({}),
-    sendMessage: () => {},
+    sendMessage: (message: { content: string }) => { messages.push(message); },
     sendUserMessage: () => {},
   };
   const ctx = {
@@ -75,7 +77,7 @@ function harness(mode: "tui" | "print") {
     return r as Result;
   };
   const call = (args: Record<string, unknown>) => tool!.execute("id", tool!.prepareArguments(args), undefined, undefined, ctx);
-  return { emit, call, usage, cwd, terminal, notifications, widgetLines: () => widget!.render(120), command: (args: string) => command!.handler(args, ctx), panel: () => panel, focus: () => shortcut!.handler(ctx), isFocused: () => focused, visible: (width: number, height: number) => visible!(width, height) };
+  return { emit, call, usage, cwd, terminal, notifications, git, messages, widgetLines: () => widget!.render(120), command: (args: string) => command!.handler(args, ctx), panel: () => panel, focus: () => shortcut!.handler(ctx), isFocused: () => focused, visible: (width: number, height: number) => visible!(width, height) };
 }
 
 test("widget reflects task changes made outside this session", async () => {
@@ -181,6 +183,22 @@ test("TUI: warning at the end of a run asks for a handoff; the checkpoint stops 
   const res = await h.call({ action: "checkpoint", next: "nothing left" });
   assert.equal(res.terminate, true);
   assert.equal(fs.existsSync(path.join(h.cwd, ".pi", "memory", "task.json")), false);
+});
+
+test("resume detects changed Git state and conversation branch navigation", async () => {
+  const h = harness("tui");
+  await h.emit("session_start");
+  await h.call({ action: "start", title: "T", goal: "G" });
+  h.git.status = " M a.ts\n";
+  await h.call({ action: "checkpoint", next: "continue" });
+  h.git.head = "def456";
+  h.git.branch = "feature";
+  await h.command("resume");
+  assert.match(h.messages.at(-1)!.content, /HEAD changed: abc123 -> def456/);
+  assert.match(h.messages.at(-1)!.content, /branch changed: main -> feature/);
+  assert.match(h.messages.at(-1)!.content, /Dirty file contents can change/);
+  await h.emit("session_tree");
+  assert.match((await h.emit("before_agent_start"))!.message!.content, /Conversation branch changed/);
 });
 
 test("thinking phase uses a distinct icon", async () => {

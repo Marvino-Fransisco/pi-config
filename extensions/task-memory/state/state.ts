@@ -198,7 +198,7 @@ export function buildCheckpoint(seq: number, c: CheckpointInput, now: string, gi
     readLater: refs(c.readLater, LIMIT.readLater, "readLater"),
     known: known.map((k) => ({ path: clip(k.path, 160, t), fact: clip(k.fact, 160, t) })),
     context: c.context ? clipBlock(c.context, LIMIT.context, t) : undefined,
-    head: git.head, dirty: git.dirty,
+    branch: git.branch, head: git.head, dirty: git.dirty,
   };
   return cp;
 }

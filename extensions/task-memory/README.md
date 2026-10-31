@@ -18,7 +18,7 @@ Pi extension that keeps long-running work resumable across context compaction an
   - `/compact` also has the agent write the handoff first. If it doesn't, the conversation is retained; run `/compact` again to use Pi's default summarizer.
   - Pi's own auto-compaction stays on as a safety net. If it fires, the saved task state is re-injected afterwards and may need reconciliation with the summary.
 - **Headless runs** (`pi -p`, `--mode json`): no turn is added after the final answer, so the printed answer stays intact. The end-of-run handoff and the progress reminder are skipped; if a handoff is unavailable at the mandatory threshold, the conversation is retained for Pi's normal compaction.
-- **New session**: saved state is loaded silently, with a one-line notice. The agent continues only if your request relates to it, you say "continue", or you run `/task resume`.
+- **New session**: saved state is loaded with a one-line notice. The agent continues only if your request relates to it, you say "continue", or you run `/task resume`. Resume checks checkpoint Git HEAD, branch and working-tree status; dirty files require revalidation even when the status is unchanged. After `/tree`, the agent is warned to reconcile disk memory with the conversation branch.
 - **Progress sync**: if a run edits files during an active task but never updates it, one short extra turn records progress.
 - **Phase widget** (below the editor): `idle · thinking · planning · exploring · coding · verifying · handoff · compacting · resuming`, with animated blue active phases, the task title, step progress, and a context warning line.
 
@@ -72,6 +72,7 @@ After a Pi upgrade, update the release path in `tsconfig.json`.
 
 - One active task per checkout (git worktrees each get their own). Two sessions in the same checkout: the last write wins.
 - Edits made through `bash` (sed, redirects) are not tracked as touched files.
-- Memory lives on disk, so it does not rewind with `/tree`.
+- Git status cannot prove dirty file contents are unchanged; resume asks the agent to revalidate them. Checkpoint dirty-file lists are capped at 15 entries.
+- Memory lives on disk, so it does not rewind with `/tree`; navigation warns the agent but does not automatically reconcile state.
 - An intercepted `/compact` may be reported as cancelled before the handoff turn runs.
 - The notes panel overlays existing terminal content; it does not reserve a separate column.
