@@ -6,6 +6,7 @@ import * as os from "node:os";
 import * as path from "node:path";
 import extension from "../extensions/task-memory/index.ts";
 import { registerContextCommand } from "../extensions/ui/context.ts";
+import memoryExtension from "../extensions/long-memory/index.ts";
 
 type Handler = (event: unknown, ctx: unknown) => unknown;
 type Entry = { type: string; customType?: string; details?: Record<string, unknown> };
@@ -87,7 +88,7 @@ function harness(mode: "tui" | "print") {
     return r as Result;
   };
   const call = (args: Record<string, unknown>) => tool!.execute("id", tool!.prepareArguments(args), undefined, undefined, ctx);
-  return { emit, call, usage, cwd, terminal, notifications, git, messages, events, ctx, widgetLines: () => widget!.render(120), command: (args: string) => command!.handler(args, ctx), close: () => closeCommand!.handler("", ctx), panel: () => panel, focus: () => shortcut!.handler(ctx), isFocused: () => focused, visible: (width: number, height: number) => visible!(width, height) };
+  return { api: pi, emit, call, usage, cwd, terminal, notifications, git, messages, events, ctx, widgetLines: () => widget!.render(120), command: (args: string) => command!.handler(args, ctx), close: () => closeCommand!.handler("", ctx), panel: () => panel, focus: () => shortcut!.handler(ctx), isFocused: () => focused, visible: (width: number, height: number) => visible!(width, height) };
 }
 
 test("widget reflects task changes made outside this session", async () => {
@@ -131,35 +132,67 @@ test("task notes stay open, update from disk, scroll and release focus", async (
   await h.emit("session_shutdown");
 });
 
-test("shared panel switches tabs without blocking the editor", async () => {
+test("task panel has no cross-panel arrow navigation", async () => {
   const h = harness("tui");
-  h.events.on("ui:context:read", (request) => { request.lines = ["Context usage", "● Tool results"]; });
   await h.emit("session_start");
-  const request = { tab: "context", handled: false };
-  h.events.emit("task-memory:panel:open", request);
-  assert.equal(request.handled, true);
-  assert.match(h.panel()!.render(50).join("\n"), /Context usage/);
-  await h.focus();
-  h.panel()!.handleInput("h");
-  assert.match(h.panel()!.render(50).join("\n"), /No active task/);
-  h.panel()!.handleInput("right");
-  assert.match(h.panel()!.render(50).join("\n"), /Context usage/);
-  h.panel()!.handleInput("escape");
-  assert.equal(h.isFocused(), false);
-  h.terminal.columns = 70;
-  const smallRequest = { tab: "context", handled: false };
-  h.events.emit("task-memory:panel:open", smallRequest);
-  assert.equal(smallRequest.handled, false);
+  await h.command("");
+  for (const key of ["h", "l", "left", "right", "ctrl+left", "ctrl+right"]) h.panel()!.handleInput(key);
+  const text = h.panel()!.render(50).join("\n");
+  assert.match(text, /\[task\]/);
+  assert.doesNotMatch(text, /context|memory\]|←|→/);
+  h.events.emit("ui:panel:opening", { name: "memory" });
+  assert.equal(h.panel(), undefined);
   await h.emit("session_shutdown");
 });
 
-test("context command opens the real shared panel and provides context data", async () => {
+test("independent memory panel replaces task and preserves text editing keys", async () => {
   const h = harness("tui");
   let command: any;
-  registerContextCommand({ events: h.events, registerCommand: (_name: string, value: unknown) => { command = value; } } as never);
+  let contextCommand: any;
+  registerContextCommand({ ...h.api, registerCommand: (_name: string, value: unknown) => { contextCommand = value; } } as never);
+  memoryExtension({ ...h.api, registerTool() {}, registerCommand: (_name: string, value: unknown) => { command = value; } } as never);
+  await h.emit("session_start");
+  await h.command("");
+  assert.match(h.panel()!.render(80).join("\n"), /\[task\]/);
+  await command.handler("", h.ctx);
+  assert.match(h.panel()!.render(80).join("\n"), /\[memory\]/);
+  assert.doesNotMatch(h.panel()!.render(80).join("\n"), /\[task\]|context/);
+  h.panel()!.handleInput("tab");
+  assert.match(h.panel()!.render(80).join("\n"), /\[SEARCH\]/);
+  h.panel()!.handleInput("hello");
+  assert.match(h.panel()!.render(80).join("\n"), /hello/);
+  h.panel()!.handleInput("ctrl+left");
+  assert.match(h.panel()!.render(80).join("\n"), /\[memory\]/);
+  h.panel()!.handleInput("right");
+  assert.match(h.panel()!.render(80).join("\n"), /hello/);
+  h.panel()!.handleInput("escape");
+  assert.equal(h.isFocused(), false);
+  await command.handler("", h.ctx);
+  assert.equal(h.isFocused(), true);
+  await command.handler("", h.ctx);
+  assert.equal(h.panel(), undefined);
+  await command.handler("", h.ctx);
+  await h.command("");
+  assert.match(h.panel()!.render(80).join("\n"), /\[task\]/);
+  await command.handler("", h.ctx);
+  await h.close();
+  assert.equal(h.panel(), undefined);
+  await command.handler("", h.ctx);
+  await contextCommand.handler("", h.ctx);
+  assert.match(h.panel()!.render(80).join("\n"), /\[context\]/);
+  await command.handler("", h.ctx);
+  assert.match(h.panel()!.render(80).join("\n"), /\[memory\]/);
+  await h.emit("session_shutdown");
+  assert.equal(h.panel(), undefined);
+});
+
+test("context command opens its own panel and replaces task", async () => {
+  const h = harness("tui");
+  let command: any;
+  registerContextCommand({ ...h.api, registerCommand: (_name: string, value: unknown) => { command = value; } } as never);
   await h.emit("session_start");
   await command.handler("", h.ctx);
-  assert.match(h.panel()!.render(50).join("\n"), /Context usage/);
+  assert.match(h.panel()!.render(50).join("\n"), /Context grid unavailable/);
   assert.equal(h.isFocused(), true);
   await command.handler("", h.ctx);
   assert.equal(h.panel(), undefined);
@@ -168,7 +201,7 @@ test("context command opens the real shared panel and provides context data", as
   h.panel()!.handleInput("escape");
   assert.equal(h.isFocused(), false);
   await command.handler("", h.ctx);
-  assert.match(h.panel()!.render(50).join("\n"), /Context usage/);
+  assert.match(h.panel()!.render(50).join("\n"), /Context grid unavailable/);
   assert.equal(h.isFocused(), true);
   await h.close();
   assert.equal(h.panel(), undefined);

@@ -83,11 +83,13 @@ export async function listProjects(): Promise<Array<{ id: string; path: string; 
   return database(false, async (client) => (await client.query("SELECT id, path, name FROM projects ORDER BY name, path LIMIT 100")).rows);
 }
 
-export async function listMemories(cwd: string, scope: Scope = "both"): Promise<MemoryRow[]> {
+export async function listMemories(cwd: string, scope: Scope = "both", kind?: string, offset = 0): Promise<MemoryRow[]> {
+  if (!Number.isSafeInteger(offset) || offset < 0) throw new Error("Offset must be a non-negative integer");
   return database(false, async (client) => {
     const path = projectPath(cwd);
-    const params = scope === "global" ? [] : [path];
-    const result = await client.query<MemoryRow>(`SELECT m.*, EXISTS(SELECT 1 FROM memory_embeddings e WHERE e.memory_id = m.id AND e.model = '${MODEL}') AS indexed FROM memories m LEFT JOIN projects p ON p.id = m.project_id WHERE ${scopeFilter(scope)} ORDER BY m.updated_at DESC LIMIT 50`, params);
+    const params: unknown[] = scope === "global" ? [] : [path];
+    params.push(kind ?? null, offset);
+    const result = await client.query<MemoryRow>(`SELECT m.*, EXISTS(SELECT 1 FROM memory_embeddings e WHERE e.memory_id = m.id AND e.model = '${MODEL}') AS indexed FROM memories m LEFT JOIN projects p ON p.id = m.project_id WHERE ${scopeFilter(scope)} AND ($${params.length - 1}::text IS NULL OR m.kind = $${params.length - 1}) ORDER BY m.updated_at DESC, m.id DESC LIMIT 50 OFFSET $${params.length}`, params);
     return result.rows;
   });
 }
@@ -97,7 +99,7 @@ export async function searchMemories(cwd: string, text: string, scope: Scope = "
   return database(false, async (client) => {
     const path = projectPath(cwd);
     const scopeSql = scope === "global" ? "m.project_id IS NULL" : scope === "project" ? "p.path = $2" : "(m.project_id IS NULL OR p.path = $2)";
-    const result = await client.query<MemoryRow>(`SELECT m.*, 1 - (e.embedding <=> $1::vector) AS similarity FROM memories m JOIN memory_embeddings e ON e.memory_id = m.id LEFT JOIN projects p ON p.id = m.project_id WHERE e.model = $${scope === "global" ? 2 : 3} AND ${scopeSql} ORDER BY e.embedding <=> $1::vector LIMIT 20`, scope === "global" ? [`[${vector.join(",")}]`, MODEL] : [`[${vector.join(",")}]`, path, MODEL]);
+    const result = await client.query<MemoryRow>(`SELECT m.*, 1 - (e.embedding <=> $1::vector) AS similarity FROM memories m JOIN memory_embeddings e ON e.memory_id = m.id LEFT JOIN projects p ON p.id = m.project_id WHERE e.model = $${scope === "global" ? 2 : 3} AND ${scopeSql} ORDER BY e.embedding <=> $1::vector LIMIT 5`, scope === "global" ? [`[${vector.join(",")}]`, MODEL] : [`[${vector.join(",")}]`, path, MODEL]);
     return result.rows;
   });
 }
@@ -129,7 +131,8 @@ async function indexMemory(client: pg.Client, id: string, content: string): Prom
   }
 }
 
-export async function saveMemory(cwd: string, scope: "global" | "project", kind: string, content: string): Promise<{ id: string; warning?: string }> {
+export async function saveMemory(cwd: string, scope: "global" | "project", kind: string, content: string): Promise<{ id: string; warning?: string; duplicate?: boolean }> {
+  content = content.trim();
   if (!content.trim() || content.length > 8000) throw new Error("Memory content must be between 1 and 8000 characters");
   if (!kind.trim() || kind.length > 80) throw new Error("Memory kind must be between 1 and 80 characters");
   return database(false, async (client) => {
@@ -139,21 +142,41 @@ export async function saveMemory(cwd: string, scope: "global" | "project", kind:
       const project = await client.query("INSERT INTO projects(path, name) VALUES ($1, $2) ON CONFLICT(path) DO UPDATE SET name = EXCLUDED.name RETURNING id", [path, basename(path)]);
       projectId = project.rows[0].id;
     }
-    const result = await client.query("INSERT INTO memories(project_id, kind, content, source) VALUES($1, $2, $3, $4) RETURNING id", [projectId, kind, content, "user request"]);
-    const id: string = result.rows[0].id;
+    await client.query("BEGIN");
+    let id: string;
+    let duplicate = false;
+    try {
+      await client.query("SELECT pg_advisory_xact_lock(hashtextextended($1, 0))", [`${projectId ?? "global"}:${content}`]);
+      const existing = await client.query("SELECT id FROM memories WHERE project_id IS NOT DISTINCT FROM $1::bigint AND btrim(content) = $2 ORDER BY id LIMIT 1", [projectId, content]);
+      if (existing.rows.length) { id = existing.rows[0].id; duplicate = true; }
+      else {
+        const result = await client.query("INSERT INTO memories(project_id, kind, content, source) VALUES($1, $2, $3, $4) RETURNING id", [projectId, kind, content, "user request"]);
+        id = result.rows[0].id;
+      }
+      await client.query("COMMIT");
+    } catch (error) { await client.query("ROLLBACK"); throw error; }
     const warning = await indexMemory(client, id, content);
-    return { id, warning };
+    return { id, warning, duplicate };
   });
 }
 
 export async function updateMemory(cwd: string, id: string, content: string): Promise<{ warning?: string }> {
+  content = content.trim();
   if (!/^\d+$/.test(id)) throw new Error("Memory id must be a positive integer");
   if (!content.trim() || content.length > 8000) throw new Error("Memory content must be between 1 and 8000 characters");
   return database(false, async (client) => {
     await client.query("BEGIN");
     try {
-      const result = await client.query("UPDATE memories m SET content = $2, updated_at = now() WHERE m.id = $1 AND (m.project_id IS NULL OR m.project_id IN (SELECT id FROM projects WHERE path = $3)) RETURNING m.id", [id, content, projectPath(cwd)]);
-      if (!result.rowCount) throw new Error("Memory not found in global or current project scope");
+      const current = await client.query<MemoryRow>("SELECT m.* FROM memories m WHERE m.id = $1 AND (m.project_id IS NULL OR m.project_id IN (SELECT id FROM projects WHERE path = $2)) FOR UPDATE", [id, projectPath(cwd)]);
+      const memory = current.rows[0];
+      if (!memory) throw new Error("Memory not found in global or current project scope");
+      await client.query("SELECT pg_advisory_xact_lock(hashtextextended($1, 0))", [`${memory.project_id ?? "global"}:${content}`]);
+      const duplicate = await client.query("SELECT id FROM memories WHERE project_id IS NOT DISTINCT FROM $1::bigint AND btrim(content) = $2 AND id <> $3 LIMIT 1", [memory.project_id, content, id]);
+      if (duplicate.rows.length) throw new Error(`Duplicate of memory #${duplicate.rows[0].id}; update cancelled`);
+      if (memory.content !== content) {
+        await client.query("INSERT INTO memory_revisions(memory_id, content, source) VALUES ($1, $2, $3)", [id, memory.content, memory.source]);
+        await client.query("UPDATE memories SET content = $2, updated_at = now() WHERE id = $1", [id, content]);
+      }
       await client.query("DELETE FROM memory_embeddings WHERE memory_id = $1", [id]);
       await client.query("COMMIT");
     } catch (error) {
@@ -170,6 +193,26 @@ export async function deleteMemory(cwd: string, id: string): Promise<void> {
     const result = await client.query("DELETE FROM memories m WHERE m.id = $1 AND (m.project_id IS NULL OR m.project_id IN (SELECT id FROM projects WHERE path = $2))", [id, projectPath(cwd)]);
     if (!result.rowCount) throw new Error("Memory not found in global or current project scope");
   });
+}
+
+export async function memoryStats(cwd: string, scope: Scope = "both") {
+  return database(false, async (client) => {
+    const params = scope === "global" ? [] : [projectPath(cwd)];
+    const result = await client.query<{ scope: string; kind: string; total: string; indexed: string }>(`SELECT CASE WHEN m.project_id IS NULL THEN 'global' ELSE 'project' END AS scope, m.kind, count(*) AS total, count(e.memory_id) AS indexed FROM memories m LEFT JOIN projects p ON p.id = m.project_id LEFT JOIN memory_embeddings e ON e.memory_id = m.id AND e.model = '${MODEL}' WHERE ${scopeFilter(scope)} GROUP BY 1, 2 ORDER BY 1, 2`, params);
+    return { scope, model: MODEL, dimensions: DIMENSIONS, total: result.rows.reduce((sum, row) => sum + Number(row.total), 0), indexed: result.rows.reduce((sum, row) => sum + Number(row.indexed), 0), groups: result.rows };
+  });
+}
+
+export async function debugRetrieval(cwd: string, query: string, scope: Scope = "both") {
+  const started = performance.now();
+  const rows = await searchMemories(cwd, query, scope);
+  const stats = await memoryStats(cwd, scope);
+  return { query, project: scope === "global" ? null : projectPath(cwd), ...stats, strategy: "Exact cosine distance; top 5 indexed memories; no minimum similarity threshold. Unindexed memories are excluded. No automatic prompt injection.", elapsedMs: Math.round(performance.now() - started), rows };
+}
+
+export async function memoryHistory(cwd: string, id: string) {
+  if (!(await getMemory(cwd, id))) throw new Error("Memory not found in global or current project scope");
+  return database(false, async (client) => (await client.query<{ id: string; content: string; source: string; replaced_at: string }>("SELECT r.id, r.content, r.source, r.replaced_at FROM memory_revisions r JOIN memories m ON m.id = r.memory_id LEFT JOIN projects p ON p.id = m.project_id WHERE m.id = $1 AND (m.project_id IS NULL OR p.path = $2) ORDER BY r.id DESC LIMIT 50", [id, projectPath(cwd)])).rows);
 }
 
 export async function queryMemory(sql: string): Promise<unknown[]> {

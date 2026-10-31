@@ -25,3 +25,13 @@ CREATE TABLE memory_embeddings (
 );
 
 CREATE INDEX memories_project_id_idx ON memories(project_id);
+
+CREATE TABLE memory_revisions (
+  id bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+  memory_id bigint NOT NULL REFERENCES memories(id) ON DELETE CASCADE,
+  content text NOT NULL,
+  source text NOT NULL,
+  replaced_at timestamptz NOT NULL DEFAULT now()
+);
+
+CREATE INDEX memory_revisions_memory_id_idx ON memory_revisions(memory_id);

@@ -27,6 +27,9 @@ flowchart TD
     UP["updateMemory(cwd, id, content)"]
     DM["deleteMemory(cwd, id)"]
     LP["listProjects()"]
+    MS["memoryStats(cwd, scope)"]
+    DR["debugRetrieval(cwd, query, scope)"]
+    MH["memoryHistory(cwd, id)"]
     QM["queryMemory(sql)"]
   end
   subgraph ui["extensions/long-memory/ui/panel.ts"]
@@ -51,6 +54,9 @@ flowchart TD
   SM --> E & PP & DB
   GM --> PP & DB
   LP --> DB
+  MS --> DB
+  DR --> SM & MS
+  MH --> GM & DB
   QM --> DB
   F --> FM --> ST
   A --> ST
@@ -75,8 +81,8 @@ flowchart LR
   end
   subgraph service["extensions/long-memory/src/store.ts"]
     WRITE["saveMemory / updateMemory / deleteMemory"]
-    READ["listMemories / getMemory / listProjects"]
-    SEARCH["searchMemories"]
+    READ["listMemories / getMemory / listProjects / memoryStats / memoryHistory"]
+    SEARCH["searchMemories / debugRetrieval"]
     SQL["queryMemory"]
     EMBED["embed"]
     INDEX["indexMemory"]
@@ -87,6 +93,7 @@ flowchart LR
     PROJECTS[("projects")]
     MEMORIES[("memories")]
     EMBEDDINGS[("memory_embeddings: vector(768)")]
+    REVISIONS[("memory_revisions: replaced content")]
   end
   GOOGLE["Google Gemini: countTokens + embedContent"]
   READER["memory_reader: SELECT-only role"]
@@ -102,9 +109,9 @@ flowchart LR
   SEARCH --> EMBED & CONNECT
   READ --> CONNECT
   SQL --> CONNECT --> READER
-  CONNECT --> PROJECTS & MEMORIES & EMBEDDINGS
+  CONNECT --> PROJECTS & MEMORIES & EMBEDDINGS & REVISIONS
   PROJECTS -->|"id → project_id"| MEMORIES
-  MEMORIES -->|"id → memory_id"| EMBEDDINGS
+  MEMORIES -->|"id → memory_id"| EMBEDDINGS & REVISIONS
 ```
 
 # System level
@@ -149,21 +156,21 @@ flowchart TD
   REJECT["Stop: no write"]
   SAVE["src/store.ts: saveMemory()"]
   PROJECT["src/store.ts: projectPath() → projects upsert for project scope"]
-  INSERT[("PostgreSQL: INSERT memories")]
+  INSERT[("PostgreSQL: scope/text lock → reuse identical memory or INSERT")]
   INDEX["src/store.ts: indexMemory() → embed(RETRIEVAL_DOCUMENT)"]
   COUNT["Google: countTokens ≤ 2048"]
   VECTOR["Google: embedContent → 768 values"]
   LOCK["src/store.ts: indexMemory() → lock and verify current content"]
   INDEXED[("PostgreSQL: UPSERT memory_embeddings")]
   WARNING["Return saved but not indexed warning"]
-  SEARCH["User opens /memory → ui/panel.ts: searchPanel()"]
+  SEARCH["User opens independent /memory panel → STATS → SEARCH or DEBUG"]
   SUBMIT["ui/panel.ts: Input.onSubmit() → searchMemories()"]
   QUERY["src/store.ts: embed(RETRIEVAL_QUERY) → Google"]
-  MATCH[("pgvector cosine distance: global + selected project scope")]
+  MATCH[("Exact pgvector cosine distance: top 5 indexed, global + selected project scope")]
   RESULTS["ui/panel.ts: searchPanel.render() → results + similarity"]
   DETAIL["ui/panel.ts: formatMemory() → selected memory"]
   DELETE["/memory delete ID → approve() → deleteMemory()"]
-  REMOVE[("DELETE memories → cascade memory_embeddings")]
+  REMOVE[("DELETE memories → cascade embeddings and revisions")]
   REQUEST --> TOOL --> CONFIRM
   CONFIRM -->|"declined"| REJECT
   CONFIRM -->|"approved"| SAVE --> PROJECT --> INSERT --> INDEX --> COUNT --> VECTOR --> LOCK --> INDEXED

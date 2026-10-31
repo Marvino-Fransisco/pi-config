@@ -30,6 +30,7 @@ export class Text {
 
 export const truncateToWidth = (s, width, _ellipsis, pad) => pad ? s.padEnd(width) : s;
 export const visibleWidth = (s) => [...s].length;
+export const sliceByColumn = (s, start, length) => [...s].slice(start, start + length).join("");
 export const matchesKey = (data, key) => data === key;
 export const wrapTextWithAnsi = (s, width) => s.match(new RegExp(`.{1,${width}}`, "gu")) ?? [""];
 export const Key = { ctrlAlt: (key) => `ctrl+alt+${key}` };

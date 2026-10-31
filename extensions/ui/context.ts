@@ -1,5 +1,6 @@
 import { DEFAULT_COMPACTION_SETTINGS, estimateTokens, type ExtensionAPI, type ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { matchesKey, truncateToWidth, wrapTextWithAnsi } from "@earendil-works/pi-tui";
+import { createNotes } from "../shared/panel.ts";
 
 const COLORS = ["\x1b[38;2;105;180;255m", "\x1b[38;2;95;225;220m", "\x1b[38;2;180;150;255m", "\x1b[38;2;255;185;110m", "\x1b[38;2;145;215;150m", "\x1b[38;2;255;145;175m", "\x1b[38;2;225;210;125m", "\x1b[38;2;150;165;185m"];
 const RESET = "\x1b[39m";
@@ -68,20 +69,11 @@ export function contextReport(ctx: ExtensionContext, width = 100, reserve?: numb
 		? Array.from({ length: Math.max(chart.length, detailRows.length) }, (_, index) => `${chart[index] ?? " ".repeat(39)}  ${detailRows[index] ?? ""}`)
 		: [...chart, "", ...details];
 	const lines = [
-		"Context usage",
 		...summary,
 		"",
-		"Legend: at least one symbol per non-zero category.",
-		"",
-		"Tool result sizes in active context (estimated)",
-		...(tools.size ? [...tools.entries()].sort((a, b) => b[1].tokens - a[1].tokens).map(([name, value]) =>
-			`  ${name}: ~${value.tokens.toLocaleString()} tokens (${value.calls} results)`) : ["  No tool results in active context."]),
-		"",
-		"Grid is approximate: categories have a minimum symbol and estimates may overlap.",
-		"Pi reserve is configured for the selected model; task-memory can compact earlier.",
-		"Estimates are not provider token counts; system snapshot can overlap system messages.",
-		"Tool definitions, images and provider overhead are not independently measured.",
-		"Tool ranking covers retained results only, not tool schemas or earlier compacted history.",
+		`${COLORS[1]}⛁${RESET} Tool result sizes in active context (estimated)`,
+		...(tools.size ? [...tools.entries()].sort((a, b) => b[1].tokens - a[1].tokens).map(([name, value], index) =>
+			`  ${COLORS[index % COLORS.length]}◆${RESET} ${name}: ~${value.tokens.toLocaleString()} tokens (${value.calls} results)`) : ["  No tool results in active context."]),
 	];
 	return lines;
 }
@@ -94,6 +86,20 @@ function configuredReserve(pi: ExtensionAPI, ctx: ExtensionContext): number | nu
 }
 
 export function registerContextCommand(pi: ExtensionAPI): void {
+	let panel: ReturnType<typeof createNotes> | undefined;
+	pi.events?.on("ui:panel:close", () => panel?.close());
+	pi.events?.on("ui:panel:opening", (data) => { if ((data as { name: string }).name !== "context") panel?.close(); });
+	pi.on?.("session_start", (_event, ctx) => {
+		panel?.close();
+		panel = undefined;
+		if (ctx.mode !== "tui") return;
+		ctx.ui.setWidget("context-overlay", (tui, theme) => {
+			panel?.close();
+			panel = createNotes(tui, theme, (width) => contextReport(ctx, width, configuredReserve(pi, ctx)).join("\n"), (message) => ctx.ui.notify(message, "error"), "context", () => pi.events?.emit("ui:panel:opening", { name: "context" }));
+			return { invalidate() {}, render: () => [] };
+		});
+	});
+	pi.on?.("session_shutdown", () => { panel?.close(); panel = undefined; });
 	pi.events?.on("ui:context:read", (data) => {
 		const request = data as { ctx: ExtensionContext; width?: number; lines?: string[] };
 		request.lines = contextReport(request.ctx, request.width, configuredReserve(pi, request.ctx));
@@ -107,9 +113,8 @@ export function registerContextCommand(pi: ExtensionAPI): void {
 				ctx.ui.notify(text);
 				return;
 			}
-			const request = { tab: "context", handled: false };
-			pi.events?.emit("task-memory:panel:open", request);
-			if (request.handled) return;
+			if (panel?.canShow()) { panel.toggle(); return; }
+			pi.events?.emit("ui:panel:opening", { name: "context" });
 			await ctx.ui.custom<void>((tui, theme, _keys, done) => {
 				let offset = 0;
 				let lines: string[] = [];

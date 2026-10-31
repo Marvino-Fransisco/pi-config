@@ -40,11 +40,9 @@ export default function (pi: ExtensionAPI) {
   pi.events?.on("task-memory:footer:available", (data) => {
     if (rerender && ctxRef?.mode === "tui") (data as { available: boolean }).available = true;
   });
-  pi.events?.on("task-memory:panel:open", (data) => {
-    const request = data as { tab: string; handled: boolean };
-    if (!notes || !notes.canShow() || request.tab !== "context") return;
-    notes.toggle("context");
-    request.handled = true;
+  pi.events?.on("ui:panel:close", () => notes?.close());
+  pi.events?.on("ui:panel:opening", (data) => {
+    if ((data as { name: string }).name !== "task") notes?.close();
   });
 
   let running = false;
@@ -279,11 +277,7 @@ export default function (pi: ExtensionAPI) {
         const task = S.loadTaskFile(dir).task;
         const project = S.loadProject(dir);
         return stateText(task, project) || "No active task and no project memory.";
-      }, (message) => notify(message, "error"), (width) => {
-        const request: { ctx: ExtensionContext; width: number; lines?: string[] } = { ctx: ctxRef ?? ctx, width };
-        pi.events?.emit("ui:context:read", request);
-        return request.lines?.join("\n") ?? "Context extension is unavailable.";
-      });
+      }, (message) => notify(message, "error"), "task", () => pi.events?.emit("ui:panel:opening", { name: "task" }));
     }, () => {
       const request = { available: false };
       pi.events?.emit("ui:footer:available", request);
@@ -522,8 +516,8 @@ export default function (pi: ExtensionAPI) {
   });
 
   pi.registerCommand("close", {
-    description: "Close the task or context panel",
-    handler: async () => { notes?.close(); },
+    description: "Close the active task, context, or memory panel",
+    handler: async () => { notes?.close(); pi.events?.emit("ui:panel:close", {}); },
   });
 
   // ---------------------------------------------------------------- command

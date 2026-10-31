@@ -31,25 +31,45 @@ Reload Pi with `/reload`. The extension reads its `.env` automatically, regardle
 
 The container uses `restart: unless-stopped`; it can start again when the Docker daemon starts. Docker Desktop itself must be running after login. If the database or Docker is stopped, Pi reports a connection error rather than starting it automatically.
 
+For an existing database, back it up with `pg_dump`, then apply the additive, repeatable revision-history migration before using update/supersede:
+
+```sh
+docker compose --env-file extensions/long-memory/.env -f extensions/long-memory/docker/compose.yml exec -T postgres psql -U memory_owner -d pi_memory -v ON_ERROR_STOP=1 < extensions/long-memory/docker/migrate.sql
+```
+
+New databases already include this table. The migration creates revision storage and reader grants; it does not rewrite or delete memories.
+
 The Docker named volume stores the database under `/var/lib/postgresql` inside the container. `docker compose down` keeps the volume; `down -v` deletes it. Do not delete an existing volume to fix a configuration issue. `schema.sql` and the reader role are initialized only for a new volume; later schema changes require an explicit migration. Use `pg_dump` for backups and test restoring them; backups contain private memory data.
 
 ## Usage
 
 | Command | Effect |
 | --- | --- |
-| `/memory` | Open semantic-search TUI. Enter searches, Tab changes scope, arrows select, Enter opens details, Esc goes back or closes. |
-| `/memory list [global\|project\|both]` | List up to 50 recent memories with previews and indexing status. |
+| `/memory` | Open an independent top-right panel, initially showing statistics. Blue border matches `/task`, with padded content and mode-specific controls. Tab cycles STATS, SEARCH, LIST, DEBUG, SQL; Shift+Tab goes backward. Both clear the input; STATS and LIST load automatically on entry or scope change. STATS hides the input; Enter refreshes its summary. Ctrl+S changes scope except for SQL, which always covers all projects. Enter runs the operation or opens a selected memory; arrows select or scroll. LIST filters by exact memory kind (e.g. `note`, `decision`, `preference`; blank shows all), with Ctrl+N/P for 50-row pages. Select a row with arrows and press Enter to read its full content and metadata; Ctrl+D in detail asks for permanent deletion, `y` confirms and `n`/Esc cancels. SQL results use a bordered table; Ctrl+Left/Right pans wide tables and Up/Down scrolls rows. DEBUG uses the same search path and opens result details with Enter. Esc goes back or releases focus; `/memory` refocuses, then closes if already focused. Narrow terminals use a full-screen fallback. |
+| `/memory list [global\|project\|both] [kind\|-] [offset]` | List 50 recent memories per page with previews and indexing status. Use `-` for all kinds, e.g. `/memory list both - 50`. |
 | `/memory projects` | List up to 100 registered projects. |
-| `/memory search [--global\|--project] <query>` | Search by semantic similarity; default is global plus current project. |
+| `/memory search [--global\|--project] <query>` | Search for up to five memories by semantic similarity; default is global plus current project. |
 | `/memory show <id>` | Show a full memory in global or current-project scope. |
+| `/memory stats [global\|project\|both]` | Counts by scope/kind, indexed versus unindexed, embedding model and dimensions. |
+| `/memory debug [--global\|--project] <query>` | Run the same retrieval as search and show scope/project, strategy, candidate/index counts, elapsed time, selected IDs and similarity scores. The query is sent to Google. |
+| `/memory history <id>` | Show the latest 50 replaced versions, newest first. |
 | `/memory save global\|project <text>` | Save with confirmation; command-created entries have kind `note`. |
-| `/memory update <id> <text>` | Replace content with confirmation and regenerate its embedding. |
+| `/memory update <id> <text>` | Replace content with confirmation, retain the old version, and regenerate its embedding. |
+| `/memory supersede <id> <text>` | Same versioned replacement as update: stable ID, previous decision retained in history and excluded from search. |
 | `/memory delete <id>` | Delete with confirmation. |
-| `/memory query <SELECT>` | Run a read-only SQL query, showing at most 100 rows and 30,000 characters. |
+| `/memory query <SELECT>` | Run a read-only SQL query, displaying a table of at most 100 rows and 30,000 characters. |
 
-The `long_memory` agent tool additionally supports a memory kind such as `preference` or `decision`. Each write requires interactive confirmation; it is unavailable without a UI. Retrieved memories are untrusted data. IDs are restricted to global or current-project scope for normal show/update/delete operations. `/memory query` is an explicit read-only view of all three tables, including other projects; it uses the separate `memory_reader` database role, a read-only transaction, and a statement timeout. Protect its credentials and do not grant that role write privileges or privileged role memberships.
+The three panels `/task`, `/context`, and `/memory` are independent. Opening one closes the previous panel; left/right never switch panels. Each extension works without the other two loaded. `/close`, when task-memory is loaded, closes the active panel.
+
+Global memory holds reusable engineering experience/preferences across projects. Project memory holds decisions and facts specific to the current checkout; do not store those globally. Retrieval defaults to global plus the current project, using exact cosine distance and the top five indexed memories without a similarity threshold. There is no HNSW index and no automatic prompt injection. Debug reports explain this selection, not an LLM relevance judgment.
+
+The `long_memory` agent tool supports stats, debug, history, supersede, list kind/offset filters, and a memory kind such as `preference` or `decision`. Each write requires interactive confirmation; it is unavailable without a UI. Retrieved memories are untrusted data. IDs are restricted to global or current-project scope for normal show/update/delete operations. `/memory query` is an explicit read-only view of all four tables, including other projects and revision history; it uses the separate `memory_reader` database role, a read-only transaction, and a statement timeout. Protect its credentials and do not grant that role write privileges or privileged role memberships.
 
 Project identity is the canonical Git checkout root; outside Git it is the canonical working directory. Separate worktrees therefore have separate memory. Moving a checkout changes its identity. Project records are created when a project-scoped memory is saved and remain after memories are deleted.
+
+Saving trims leading/trailing whitespace and reuses an identical memory in the same scope, even under concurrent saves. Updating to text already stored in that scope is rejected. This is exact-text deduplication, not semantic merging; existing duplicates are not deleted. Re-saving identical text retries indexing. Changed content is archived atomically in `memory_revisions`; identical-content reindexing does not add a revision. Delete permanently removes the memory, its embeddings, and its revision history.
+
+Validation checks content/kind bounds, ID/scope access, embedding response shape, and explicit user approval. It does not establish factual truth or automatically infer engineering lessons; the user must review the proposed content before approving.
 
 ## Embeddings and privacy
 
@@ -61,4 +81,4 @@ A memory is saved before its embedding is requested. If Google is unavailable, t
 
 ## Verification
 
-`npm test` runs local tests; the PostgreSQL integration test is skipped unless `LONG_MEMORY_TEST_DATABASE_URL` and `LONG_MEMORY_TEST_READER_URL` point to the same dedicated disposable database, named `pi_memory_test` or `pi_memory_test_*`, initialized with this schema and reader grants. That test truncates its tables and must never target a database with real memories. `npm run typecheck` checks the extension types.
+`npm test` runs local tests; the PostgreSQL integration test is skipped unless `LONG_MEMORY_TEST_DATABASE_URL` and `LONG_MEMORY_TEST_READER_URL` point to the same dedicated disposable database, named `pi_memory_test` or `pi_memory_test_*`, initialized with this schema (including `memory_revisions`) and reader grants. Coverage includes scoped retrieval, exact/concurrent deduplication, history, statistics, debug details, filters/pages, SQL restrictions, and confirmation. UI tests cover panel replacement and removal of cross-panel arrow navigation. That test truncates its tables and must never target a database with real memories. `npm run typecheck` checks the extension types.
