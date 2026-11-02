@@ -43,7 +43,6 @@ export default function (pi: ExtensionAPI) {
   pi.events?.on("ui:dashboard:sections", (data) => {
     if (cachedTask) (data as Array<{ title: string; lines: string[] }>).push({ title: "Active task", lines: [S.statusLine(cachedTask)] });
   });
-  pi.events?.on("ui:panel:close", () => notes?.close());
   pi.events?.on("ui:panel:opening", (data) => {
     if ((data as { name: string }).name !== "task") notes?.close();
   });
@@ -531,11 +530,6 @@ export default function (pi: ExtensionAPI) {
     handler: async (ctx) => {
       if (!notes?.focus()) ctx.ui.notify("Open /task and use a terminal at least 80 columns by 12 rows.", "info");
     },
-  });
-
-  pi.registerCommand("close", {
-    description: "Close the active task, context, or memory panel",
-    handler: async () => { notes?.close(); pi.events?.emit("ui:panel:close", {}); },
   });
 
   // ---------------------------------------------------------------- command

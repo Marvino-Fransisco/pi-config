@@ -87,7 +87,6 @@ function configuredReserve(pi: ExtensionAPI, ctx: ExtensionContext): number | nu
 
 export function registerContextCommand(pi: ExtensionAPI): void {
 	let panel: ReturnType<typeof createNotes> | undefined;
-	pi.events?.on("ui:panel:close", () => panel?.close());
 	pi.events?.on("ui:panel:opening", (data) => { if ((data as { name: string }).name !== "context") panel?.close(); });
 	pi.on?.("session_start", (_event, ctx) => {
 		panel?.close();

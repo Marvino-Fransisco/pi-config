@@ -50,7 +50,7 @@ export function createNotes(tui: TUI, theme: Theme, readText: (width: number) =>
         return [
           border(`┏${heading}${"━".repeat(Math.max(0, inner - visibleWidth(heading)))}┓`),
           ...lines.slice(offset, offset + height).map(row),
-          row(theme.fg("dim", handle?.isFocused() ? " ↑↓ scroll · Esc unfocus " : ` /${title} to close `)),
+          row(theme.fg("dim", handle?.isFocused() ? " ↑↓ scroll · Esc close " : ` /${title} to close `)),
           border(`┗${"━".repeat(inner)}┛`),
         ];
       },
@@ -65,7 +65,7 @@ export function createNotes(tui: TUI, theme: Theme, readText: (width: number) =>
         }
       },
       handleInput(data: string) {
-        if (matchesKey(data, "escape")) handle?.unfocus();
+        if (matchesKey(data, "escape")) close();
         else if (matchesKey(data, "up") || data === "k") offset = Math.max(0, offset - 1);
         else if (matchesKey(data, "down") || data === "j") offset = Math.min(maxOffset, offset + 1);
         else if (matchesKey(data, "pageUp")) offset = Math.max(0, offset - 10);

@@ -169,7 +169,8 @@ test("context panel recomputes layout when its width changes", () => {
   const widths: number[] = [];
   let overlayWidth: string | undefined;
   let focused = false;
-  const tui = { terminal: { columns: 120, rows: 30 }, requestRender() {}, showOverlay(component: unknown, options: { width: string }) { panel = component; overlayWidth = options.width; return { hide() {}, focus() { focused = true; }, unfocus() { focused = false; }, isFocused: () => focused }; } };
+  let hidden = false;
+  const tui = { terminal: { columns: 120, rows: 30 }, requestRender() {}, showOverlay(component: unknown, options: { width: string }) { panel = component; overlayWidth = options.width; return { hide() { hidden = true; focused = false; }, focus() { focused = true; }, unfocus() { focused = false; }, isFocused: () => focused }; } };
   const notes = createNotes(tui as never, { fg: (_color: string, text: string) => text } as never, (width) => { widths.push(width); return `width ${width}`; }, () => {}, "context");
   notes.open();
   assert.equal(overlayWidth, "65%");
@@ -179,10 +180,8 @@ test("context panel recomputes layout when its width changes", () => {
   assert.deepEqual(widths.slice(-2), [98, 78]);
   panel.handleInput("escape");
   assert.equal(focused, false);
-  panel.handleMouse({ type: "press", button: "left" });
-  assert.equal(focused, true);
-  panel.handleInput("escape");
-  panel.handleMouse({ type: "click", button: "left" });
+  assert.equal(hidden, true);
+  notes.open();
   assert.equal(focused, true);
   notes.close();
 });

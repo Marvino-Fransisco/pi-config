@@ -47,7 +47,7 @@ The Docker named volume stores the database under `/var/lib/postgresql` inside t
 
 | Command | Effect |
 | --- | --- |
-| `/memory` | Open the statistics dashboard. Tab cycles STATS, SEARCH, LIST, TRASH, DEBUG and SQL; Shift+Tab reverses. Ctrl+S changes scope outside SQL. Arrows select or scroll; Enter runs a query or opens a memory. LIST filters by kind; Ctrl+N/P pages LIST and TRASH. In detail, Ctrl+D asks to trash or permanently purge, Ctrl+H shows history, and Ctrl+R restores from trash. Confirm deletion with `y`, cancel with `n` or Esc. STATS offers Ctrl+R to reindex. SQL supports Ctrl+Left/Right to pan. Esc goes back or releases focus; `/memory` refocuses or closes the panel. Narrow terminals use a full-screen fallback. |
+| `/memory` | Open the statistics dashboard. Tab cycles STATS, SEARCH, LIST, TRASH, DEBUG and SQL; Shift+Tab reverses. Ctrl+S changes scope outside SQL. Arrows select or scroll; Enter runs a query or opens a memory. LIST filters by kind; Ctrl+N/P pages LIST and TRASH. In detail, Ctrl+D asks to trash or permanently purge, Ctrl+H shows history, and Ctrl+R restores from trash. Confirm deletion with `y` or cancel with `n`. STATS offers Ctrl+R to reindex. SQL supports Ctrl+Left/Right to pan. Backspace returns from detail; Esc closes the panel. `/memory` toggles the panel. Narrow terminals use a full-screen fallback. |
 | `/memory list [global\|project\|both] [kind\|-] [offset]` | List 50 recent memories per page with previews and indexing status. Use `-` for all kinds, e.g. `/memory list both - 50`. |
 | `/memory projects` | List up to 100 registered projects. |
 | `/memory search [--global\|--project] <query>` | Search for up to five memories by semantic similarity; default is global plus current project. |
@@ -68,7 +68,7 @@ The Docker named volume stores the database under `/var/lib/postgresql` inside t
 | `/memory backup` | Create a PostgreSQL backup. |
 | `/memory query <SELECT>` | Run a read-only SQL query, displaying a table of at most 100 rows and 30,000 characters. |
 
-The three panels `/task`, `/context`, and `/memory` are independent. Opening one closes the previous panel; left/right never switch panels. Each extension works without the other two loaded. `/close`, when task-memory is loaded, closes the active panel.
+The three panels `/task`, `/context`, and `/memory` are independent. Opening one closes the previous panel; left/right never switch panels. Each extension works without the other two loaded. Escape closes the active panel.
 
 Global memory holds reusable engineering experience/preferences across projects. Project memory holds decisions and facts specific to the current checkout; do not store those globally. Retrieval defaults to global plus the current project, using exact cosine distance and up to five indexed memories above `MEMORY_MIN_SIMILARITY` (default `0.6`). Debug also shows candidates below the threshold. There is no HNSW index and no automatic prompt injection. Debug reports explain this selection, not an LLM relevance judgment.
 

@@ -108,7 +108,6 @@ export default function (pi: ExtensionAPI): void {
     }
   }
 
-  pi.events?.on("ui:panel:close", () => overlay?.close());
   pi.events?.on("ui:panel:opening", (data) => { if ((data as { name: string }).name !== "memory") overlay?.close(); });
   pi.on("session_start", async (_event, ctx) => {
     overlay?.close();

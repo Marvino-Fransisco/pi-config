@@ -184,15 +184,8 @@ test("memory command discovers actions and manages sticky overlay focus", async 
   assert.match(view(), active("SEARCH"));
   panel.handleInput("tab");
   panel.handleInput("escape");
-  assert.equal(focused, false);
-  assert.equal(hidden, false);
-  assert.deepEqual(panel.handleMouse({ type: "press", button: "left" }), { handled: true, focus: true });
-  assert.equal(focused, true);
-  panel.handleInput("escape");
-  panel.handleMouse({ type: "click", button: "left" });
-  assert.equal(focused, true);
-  panel.handleInput("escape");
-  assert.equal(panel.handleMouse({ type: "press", button: "right" }), undefined);
+  assert.equal(hidden, true);
+  hidden = false;
   await command.handler("", ctx);
   assert.equal(focused, true);
   await events.session_shutdown();
@@ -301,7 +294,7 @@ test("PostgreSQL memory scopes, semantic index and read-only query", { skip: !ap
       assert.match(view(), /● indexed/);
       statsPanel.handleInput("ctrl+d");
       assert.match(view(), /Move #\d+ to trash\?/);
-      statsPanel.handleInput("escape");
+      statsPanel.handleInput("n");
       assert.equal((await listMemories(a)).length, 2);
     } finally { statsPanel.dispose(); }
     const disposable = await saveMemory(a, "project", "ui-delete", "delete through memory panel");
@@ -352,7 +345,7 @@ test("PostgreSQL memory scopes, semantic index and read-only query", { skip: !ap
       panel.handleInput("down");
       panel.handleInput("return");
       assert.match(panelView(), /Memory #/);
-      panel.handleInput("escape");
+      panel.handleInput("backspace");
       panel.handleInput("ctrl+s");
       assert.match(panelView(), /Scope ● Global only/);
       panel.handleInput("escape");

@@ -25,7 +25,6 @@ function harness(mode: "tui" | "print") {
   let tool: Tool | undefined;
   let widget: { render: (width: number) => string[] } | undefined;
   let command: { handler: (args: string, ctx: unknown) => Promise<void> } | undefined;
-  let closeCommand: typeof command;
   let panel: { render: (width: number) => string[]; handleInput: (data: string) => void; handleMouse: (event: { type: string; button: string; wheelDelta?: number }) => { handled?: boolean; focus?: boolean } | undefined } | undefined;
   let shortcut: { handler: (ctx: unknown) => Promise<void> } | undefined;
   let focused = false;
@@ -62,7 +61,7 @@ function harness(mode: "tui" | "print") {
     on: (name: string, h: Handler) => { handlers.set(name, [...(handlers.get(name) ?? []), h]); return () => {}; },
     registerTool: (t: Tool) => { tool = t; },
     registerMessageRenderer: () => {},
-    registerCommand: (name: string, c: typeof command) => { if (name === "close") closeCommand = c; else if (name === "task") command = c; },
+    registerCommand: (name: string, c: typeof command) => { assert.notEqual(name, "close"); if (name === "task") command = c; },
     registerShortcut: (_key: string, s: typeof shortcut) => { shortcut = s; },
     exec: async (_cmd: string, args: string[]) => ({ code: 0, stdout: args.includes("rev-parse") ? git.head : args.includes("branch") ? git.branch : args.includes("diff") ? git.diff : git.status, stderr: "", killed: false }),
     getSettings: () => ({}),
@@ -89,7 +88,7 @@ function harness(mode: "tui" | "print") {
     return r as Result;
   };
   const call = (args: Record<string, unknown>) => tool!.execute("id", tool!.prepareArguments(args), undefined, undefined, ctx);
-  return { api: pi, emit, call, usage, cwd, terminal, notifications, git, messages, events, ctx, widgetLines: () => widget!.render(120), command: (args: string) => command!.handler(args, ctx), close: () => closeCommand!.handler("", ctx), panel: () => panel, focus: () => shortcut!.handler(ctx), isFocused: () => focused, visible: (width: number, height: number) => visible!(width, height) };
+  return { api: pi, emit, call, usage, cwd, terminal, notifications, git, messages, events, ctx, widgetLines: () => widget!.render(120), command: (args: string) => command!.handler(args, ctx), panel: () => panel, focus: () => shortcut!.handler(ctx), isFocused: () => focused, visible: (width: number, height: number) => visible!(width, height) };
 }
 
 test("widget reflects task changes made outside this session", async () => {
@@ -102,7 +101,7 @@ test("widget reflects task changes made outside this session", async () => {
   assert.match(h.widgetLines()[0]!, /no active task/i);
 });
 
-test("task notes stay open, update from disk, scroll and release focus", async () => {
+test("task notes update from disk, scroll and close on escape", async () => {
   const h = harness("tui");
   await h.emit("session_start");
   await h.call({ action: "start", title: "Panel task", goal: "G", steps: Array.from({ length: 14 }, (_, i) => `step ${i}`) });
@@ -124,12 +123,8 @@ test("task notes stay open, update from disk, scroll and release focus", async (
   assert.deepEqual(h.panel()!.handleMouse({ type: "wheel", button: "none", wheelDelta: 1 }), { handled: true });
   assert.doesNotMatch(h.panel()!.render(50).join("\n"), /## Active task/);
   h.panel()!.handleInput("escape");
-  assert.equal(h.isFocused(), false);
-  h.panel()!.handleMouse({ type: "press", button: "left" });
-  assert.equal(h.isFocused(), true);
-  h.panel()!.handleInput("escape");
-  h.panel()!.handleMouse({ type: "click", button: "left" });
-  assert.equal(h.isFocused(), true);
+  assert.equal(h.panel(), undefined);
+  await h.command("");
   fs.rmSync(path.join(h.cwd, ".pi", "memory", "task.json"));
   await new Promise((resolve) => setTimeout(resolve, 1100));
   assert.match(h.panel()!.render(50).join("\n"), /No active task/);
@@ -172,16 +167,13 @@ test("independent memory panel replaces task and preserves text editing keys", a
   h.panel()!.handleInput("right");
   assert.match(h.panel()!.render(80).join("\n"), /hello/);
   h.panel()!.handleInput("escape");
-  assert.equal(h.isFocused(), false);
-  await command.handler("", h.ctx);
-  assert.equal(h.isFocused(), true);
-  await command.handler("", h.ctx);
   assert.equal(h.panel(), undefined);
   await command.handler("", h.ctx);
+  assert.equal(h.isFocused(), true);
   await h.command("");
   assert.match(h.panel()!.render(80).join("\n"), /\[task\]/);
   await command.handler("", h.ctx);
-  await h.close();
+  h.panel()!.handleInput("escape");
   assert.equal(h.panel(), undefined);
   await command.handler("", h.ctx);
   await contextCommand.handler("", h.ctx);
@@ -205,15 +197,11 @@ test("context command opens its own panel and replaces task", async () => {
   await h.command("");
   assert.match(h.panel()!.render(50).join("\n"), /No active task/);
   h.panel()!.handleInput("escape");
-  assert.equal(h.isFocused(), false);
+  assert.equal(h.panel(), undefined);
   await command.handler("", h.ctx);
   assert.match(h.panel()!.render(50).join("\n"), /Context grid unavailable/);
   assert.equal(h.isFocused(), true);
-  await h.close();
-  assert.equal(h.panel(), undefined);
-  await h.close();
-  await h.command("");
-  await h.close();
+  h.panel()!.handleInput("escape");
   assert.equal(h.panel(), undefined);
   await h.emit("session_shutdown");
 });

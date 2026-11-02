@@ -28,7 +28,6 @@ Pi extension that keeps long-running work resumable across context compaction an
 | Command | Effect |
 | --- | --- |
 | `/task` | Toggle the task and project memory notes panel |
-| `/close` | Close the task or context panel |
 | `/task resume` | Continue the active task |
 | `/task abandon` | Archive the active task as abandoned |
 | `/task clear-archive` | Permanently delete archived tasks (asks for confirmation) |
@@ -36,7 +35,7 @@ Pi extension that keeps long-running work resumable across context compaction an
 | `/task threshold warning 20` | Set the warning percentage |
 | `/task threshold mandatory 65` | Set the mandatory handoff percentage |
 
-The task panel stays open while typing and refreshes task memory from disk once per second. `/task`, `/context`, and `/memory` open independent top-right panels: opening another closes the previous panel, without cross-panel tabs or left/right navigation. Each extension works on its own. The task panel receives focus when opened. Click it in fullscreen mode or press `Ctrl+Alt+T` (`Control+Option+T` on Mac) to focus task notes again after releasing focus. Use the mouse wheel, up/down or `j`/`k` to scroll, and `Esc` to return focus to the editor. `/task` toggles its panel; `/close` closes whichever panel is active. The task panel is hidden below 80 columns or 12 rows; `/context` and `/memory` fall back to separate screens.
+The task panel stays open while typing and refreshes task memory from disk once per second. `/task`, `/context`, and `/memory` open independent top-right panels: opening another closes the previous panel, without cross-panel tabs or left/right navigation. Each extension works on its own. The task panel receives focus when opened. Click it in fullscreen mode or press `Ctrl+Alt+T` (`Control+Option+T` on Mac) to focus task notes. Use the mouse wheel, up/down or `j`/`k` to scroll, and `Esc` to close the panel. `/task` toggles its panel. The task panel is hidden below 80 columns or 12 rows; `/context` and `/memory` fall back to separate screens.
 
 ## Configuration
 

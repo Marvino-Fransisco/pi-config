@@ -366,8 +366,8 @@ export function createPanel(ctx: ExtensionContext, tui: TUI, theme: Theme, done:
   }
 
   function hints(): string {
-    if (confirming) return keys([["y", "confirm"], ["n", "cancel"]]);
-    if (detail) return keys(mode === "trash" ? [["↑↓", "scroll"], ["^R", "restore"], ["^D", "purge"], ["esc", "back"]] : [["↑↓", "scroll"], ["^H", "history"], ["^D", "trash"], ["esc", "back"]]);
+    if (confirming) return keys([["y", "confirm"], ["n", "cancel"], ["esc", "close"]]);
+    if (detail) return keys(mode === "trash" ? [["↑↓", "scroll"], ["^R", "restore"], ["^D", "purge"], ["⌫", "back"], ["esc", "close"]] : [["↑↓", "scroll"], ["^H", "history"], ["^D", "trash"], ["⌫", "back"], ["esc", "close"]]);
     if (mode === "stats") return keys([["⇥", "mode"], ["^S", "scope"], ["⏎", "refresh"], ...(stats && stats.total > stats.indexed ? [["^R", "reindex"] as [string, string]] : []), ["esc", "close"]]);
     if (mode === "sql") return keys([["⇥", "mode"], ["⏎", "run"], ["^←→", "pan"], ["↑↓", "scroll"], ["esc", "close"]]);
     return keys([["⇥", "mode"], ["^S", "scope"], ["↑↓", "select"], ["⏎", "open"], ...(mode === "list" || mode === "trash" ? [["^N/^P", "page"] as [string, string]] : []), ["esc", "close"]]);
@@ -450,17 +450,18 @@ export function createPanel(ctx: ExtensionContext, tui: TUI, theme: Theme, done:
       return { handled: true };
     },
     handleInput(data: string) {
+      if (matchesKey(data, "escape")) { done(); return; }
       if (busy) return;
       if (confirming && detail) {
-        if (matchesKey(data, "escape") || data === "n") { confirming = undefined; tui.requestRender(); return; }
+        if (data === "n") { confirming = undefined; tui.requestRender(); return; }
         if (data !== "y") return;
         const id = detail.id;
         if (confirming === "trash") act("Moving to trash…", async () => { await deleteMemory(ctx.cwd, id); dropDetail(id); return `Moved #${id} to trash · restore it from ${ICON.trash} TRASH within ${TRASH_DAYS} days`; });
         else act("Deleting permanently…", async () => { await purgeMemory(ctx.cwd, id); dropDetail(id); return `Permanently deleted #${id}`; });
         return;
       }
-      if (matchesKey(data, "escape")) {
-        if (detail) { detail = undefined; actionError = ""; offset = 0; tui.requestRender(); } else done();
+      if (detail && matchesKey(data, "backspace")) {
+        detail = undefined; actionError = ""; offset = 0; tui.requestRender();
         return;
       }
       if (detail) {
@@ -541,7 +542,7 @@ export function createMemoryOverlay(ctx: ExtensionContext, tui: TUI, theme: Them
     }
     onOpen();
     if (tui.terminal.columns < 80 || tui.terminal.rows < 12) { void searchPanel(ctx); return; }
-    panel = createPanel(ctx, tui, theme, () => handle?.unfocus());
+    panel = createPanel(ctx, tui, theme, close);
     const content = panel;
     handle = tui.showOverlay({
       get focused() { return content.focused; },
