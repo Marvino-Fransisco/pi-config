@@ -71,7 +71,8 @@ function harness(mode: "tui" | "print") {
   };
   const ctx = {
     cwd, mode, hasUI: mode === "tui",
-    ui: { notify: (message: string) => { notifications.push(message); }, setWidget: (_name: string, factory: (tui: unknown, theme: unknown) => { render: (width: number) => string[] }) => {
+    ui: { notify: (message: string) => { notifications.push(message); }, setWidget: (name: string, factory: (tui: unknown, theme: unknown) => { render: (width: number) => string[] }, options?: { placement: string }) => {
+      if (name === "task-memory") assert.equal(options?.placement, "aboveEditor");
       widget = factory(tui, { fg: (_color: string, text: string) => text });
     }, confirm: async () => true },
     isIdle: () => true,

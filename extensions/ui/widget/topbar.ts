@@ -26,6 +26,6 @@ export function installTopbar(ctx: ExtensionContext, getFooterData: () => Readon
 				},
 			};
 		},
-		{ placement: "aboveEditor" },
+		{ placement: "belowEditor" },
 	);
 }

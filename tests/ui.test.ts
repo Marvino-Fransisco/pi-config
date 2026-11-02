@@ -11,6 +11,7 @@ test("installs the editor, footer and topbar with shared branch data", () => {
   let editor: any;
   let footer: any;
   let widget: any;
+  let widgetPlacement: string | undefined;
   const footerData = { getGitBranch: () => "main", onBranchChange: () => () => {} };
   const ctx = {
     mode: "tui",
@@ -18,7 +19,7 @@ test("installs the editor, footer and topbar with shared branch data", () => {
       setWorkingIndicator: () => {},
       setEditorComponent: (factory: (...args: unknown[]) => unknown) => { editor = factory({}, {}, {}); },
       setFooter: (factory: (...args: unknown[]) => unknown) => { footer = factory({}, {}, footerData); },
-      setWidget: (_name: string, factory: (...args: unknown[]) => unknown) => { widget = factory({ requestRender() {} }, {}); },
+      setWidget: (_name: string, factory: (...args: unknown[]) => unknown, options: { placement: string }) => { widget = factory({ requestRender() {} }, {}); widgetPlacement = options.placement; },
       setHeader: () => {},
     },
     getContextUsage: () => ({ percent: 30 }),
@@ -34,6 +35,7 @@ test("installs the editor, footer and topbar with shared branch data", () => {
   assert.match(footer.render(100)[0], /test-model • medium/);
   assert.doesNotMatch(footer.render(100)[0], /30%|WATCH|▰|▱/);
   assert.match(widget.render(100)[0], /\/project \(main\)/);
+  assert.equal(widgetPlacement, "belowEditor");
 });
 
 test("fresh session dashboard is centered, runs actions and slides away on the first message", (t) => {

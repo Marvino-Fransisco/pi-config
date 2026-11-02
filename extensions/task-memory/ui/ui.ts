@@ -72,5 +72,5 @@ export function installWidget(
         return lines;
       },
     };
-  }, { placement: "belowEditor" });
+  }, { placement: "aboveEditor" });
 }
