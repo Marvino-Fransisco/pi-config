@@ -293,16 +293,6 @@ export default function (pi: ExtensionAPI) {
         const project = S.loadProject(dir);
         return stateText(task, project) || "No active task and no project memory.";
       }, (message) => notify(message, "error"), "task", () => pi.events?.emit("ui:panel:opening", { name: "task" }));
-    }, () => {
-      const request = { available: false };
-      pi.events?.emit("ui:footer:available", request);
-      if (!request.available || !ctxRef) return undefined;
-      let model = ctxRef.model?.id || "no-model";
-      if (ctxRef.model?.reasoning) {
-        const level = ctxRef.thinkingLevel || "off";
-        model += level === "off" ? " • thinking off" : ` • ${level}`;
-      }
-      return model;
     });
   });
 

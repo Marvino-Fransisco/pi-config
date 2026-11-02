@@ -9,16 +9,9 @@ export default function (pi: ExtensionAPI) {
 	registerContextCommand(pi);
 	let getFooterData: ReturnType<typeof installContextFooter> | undefined;
 	registerDashboard(pi, () => getFooterData?.());
-	let footerActive = false;
-	pi.events?.on("ui:footer:available", (data) => { if (footerActive) (data as { available: boolean }).available = true; });
 	pi.on("session_start", (_event, ctx) => {
-		footerActive = ctx.mode === "tui";
 		ctx.ui.setEditorComponent((tui, theme, kb) => new PipeCursorEditor(tui, theme, kb));
-		getFooterData = installContextFooter(ctx, () => {
-			const request = { available: false };
-			pi.events?.emit("task-memory:footer:available", request);
-			return request.available;
-		});
+		getFooterData = installContextFooter(ctx);
 		installTopbar(ctx, getFooterData);
 	});
 	pi.on("agent_start", (_event, ctx) => {
@@ -28,7 +21,6 @@ export default function (pi: ExtensionAPI) {
 		ctx.ui.setWorkingVisible(!request.available);
 	});
 	pi.on("session_shutdown", (_event, ctx) => {
-		footerActive = false;
 		if (ctx.mode === "tui") ctx.ui.setWorkingVisible(true);
 	});
 }

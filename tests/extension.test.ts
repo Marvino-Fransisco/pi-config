@@ -206,12 +206,12 @@ test("context command opens its own panel and replaces task", async () => {
   await h.emit("session_shutdown");
 });
 
-test("phase and model share a row when the UI footer is available", async () => {
+test("task phase row does not show the model", async () => {
   const h = harness("tui");
-  h.events.on("ui:footer:available", (request) => { request.available = true; });
   await h.emit("session_start");
   const row = h.widgetLines()[0]!.replace(/\x1b\[[\d;]*m/g, "");
-  assert.match(row, /idle.*test-model • medium/);
+  assert.match(row, /idle/);
+  assert.doesNotMatch(row, /test-model/);
   const request = { available: false };
   h.events.emit("task-memory:footer:available", request);
   assert.equal(request.available, true);

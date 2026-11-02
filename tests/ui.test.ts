@@ -3,7 +3,6 @@ import assert from "node:assert/strict";
 import extension from "../extensions/ui/index.ts";
 import { contextReport, registerContextCommand } from "../extensions/ui/context.ts";
 import { registerDashboard } from "../extensions/ui/dashboard.ts";
-import { installContextFooter } from "../extensions/ui/footer/context-footer.ts";
 import { createNotes } from "../extensions/task-memory/ui/notes.ts";
 
 test("installs the editor, footer and topbar with shared branch data", () => {
@@ -32,9 +31,10 @@ test("installs the editor, footer and topbar with shared branch data", () => {
   editor.lines = ["───", "input", "───", "suggestion"];
   editor.autocomplete = true;
   assert.deepEqual(editor.render(80), ["suggestion", "───", "input", "───"]);
-  assert.match(footer.render(100)[0], /test-model • medium/);
-  assert.doesNotMatch(footer.render(100)[0], /30%|WATCH|▰|▱/);
-  assert.match(widget.render(100)[0], /\/project \(main\)/);
+  assert.deepEqual(footer.render(100), []);
+  const row = widget.render(100)[0].replace(/\x1b\[[\d;]*m/g, "");
+  assert.match(row, /^\/project \(main\) +test-model • medium$/);
+  assert.equal(row.length, 100);
   assert.equal(widgetPlacement, "belowEditor");
 });
 
@@ -211,16 +211,6 @@ test("context fallback announces replacement without depending on task-memory", 
   registerContextCommand({ events, registerCommand: (_name: string, value: unknown) => { command = value; } } as never);
   await command.handler("", { mode: "tui", model: undefined, getContextUsage: () => undefined, getSystemPrompt: () => "", sessionManager: { buildSessionProjection: () => ({ entries: [] }) }, ui: { custom() {} } });
   assert.equal(opening, "context");
-});
-
-test("model footer is hidden only when the shared task row is available", () => {
-  let footer: any;
-  let shared = false;
-  const ctx = { model: { id: "test" }, ui: { setFooter: (factory: any) => { footer = factory({}, {}, {}); } } };
-  installContextFooter(ctx as never, () => shared);
-  assert.match(footer.render(80)[0], /test/);
-  shared = true;
-  assert.deepEqual(footer.render(80), []);
 });
 
 test("working indicator is hidden only when the task widget is available", () => {
