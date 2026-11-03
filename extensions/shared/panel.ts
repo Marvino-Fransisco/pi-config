@@ -10,7 +10,7 @@ export function createNotes(tui: TUI, theme: Theme, readText: (width: number) =>
   let maxOffset = 0;
   let contentWidth = 0;
 
-  function refresh(width = Math.max(1, Math.floor(tui.terminal.columns * 0.65) - 2)): void {
+  function refresh(width = Math.max(1, Math.floor(tui.terminal.columns * 0.65) - 4)): void {
     try {
       const next = readText(width);
       contentWidth = width;
@@ -39,17 +39,20 @@ export function createNotes(tui: TUI, theme: Theme, readText: (width: number) =>
       invalidate() { contentWidth = 0; },
       render(width: number): string[] {
         const inner = Math.max(1, width - 2);
-        if (inner !== contentWidth) refresh(inner);
+        const textWidth = Math.max(1, inner - 2);
+        if (textWidth !== contentWidth) refresh(textWidth);
         const height = Math.max(1, Math.min(16, tui.terminal.rows - 6));
-        const lines = text.split("\n").flatMap((line) => wrapTextWithAnsi(line, inner));
+        const lines = text.split("\n").flatMap((line) => wrapTextWithAnsi(line, textWidth));
         maxOffset = Math.max(0, lines.length - height);
         offset = Math.min(offset, maxOffset);
         const heading = truncateToWidth(` [${title}] `, inner);
         const border = (value: string) => `\x1b[38;2;90;175;255m${value}\x1b[39m`;
-        const row = (value: string) => border("┃") + truncateToWidth(value, inner, "…", true) + border("┃");
+        const row = (value: string) => border("┃") + " " + truncateToWidth(value, textWidth, "…", true) + " " + border("┃");
         return [
           border(`┏${heading}${"━".repeat(Math.max(0, inner - visibleWidth(heading)))}┓`),
+          row(""),
           ...lines.slice(offset, offset + height).map(row),
+          row(""),
           row(theme.fg("dim", handle?.isFocused() ? " ↑↓ scroll · Esc close " : ` /${title} to close `)),
           border(`┗${"━".repeat(inner)}┛`),
         ];

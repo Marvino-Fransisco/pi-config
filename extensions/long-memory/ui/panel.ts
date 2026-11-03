@@ -563,7 +563,7 @@ export function createMemoryOverlay(ctx: ExtensionContext, tui: TUI, theme: Them
         const inner = Math.max(1, width - 2);
         const border = (value: string) => BLUE(value);
         const title = truncateToWidth(` ${BRIGHT("◆")} [memory] `, inner);
-        return [border("┏") + title + border("━".repeat(Math.max(0, inner - visibleWidth(title))) + "┓"), ...content.render(Math.max(1, inner - 2)).map((line) => border("┃") + " " + truncateToWidth(line, Math.max(1, inner - 2), "…", true) + " " + border("┃")), border("┗" + "━".repeat(inner) + "┛")];
+        return [border("┏") + title + border("━".repeat(Math.max(0, inner - visibleWidth(title))) + "┓"), border("┃") + " ".repeat(inner) + border("┃"), ...content.render(Math.max(1, inner - 2)).map((line) => border("┃") + " " + truncateToWidth(line, Math.max(1, inner - 2), "…", true) + " " + border("┃")), border("┃") + " ".repeat(inner) + border("┃"), border("┗" + "━".repeat(inner) + "┛")];
       },
     } as Component & Focusable, { anchor: "top-right", width: "65%", minWidth: 36, margin: { top: 1, right: 1 }, visible: (width, height) => width >= 80 && height >= 12, nonCapturing: true });
     handle.focus();

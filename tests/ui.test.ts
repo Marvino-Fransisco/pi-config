@@ -177,7 +177,7 @@ test("context panel recomputes layout when its width changes", () => {
   panel.render(100);
   panel.render(80);
   panel.render(80);
-  assert.deepEqual(widths.slice(-2), [98, 78]);
+  assert.deepEqual(widths.slice(-2), [96, 76]);
   panel.handleInput("escape");
   assert.equal(focused, false);
   assert.equal(hidden, true);
