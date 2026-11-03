@@ -4,9 +4,11 @@ import { installContextFooter } from "./footer/context-footer.ts";
 import { installTopbar } from "./widget/topbar.ts";
 import { registerContextCommand } from "./context.ts";
 import { registerDashboard } from "./dashboard.ts";
+import { registerUsageCommand } from "./usage.ts";
 
 export default function (pi: ExtensionAPI) {
 	registerContextCommand(pi);
+	registerUsageCommand(pi);
 	let getFooterData: ReturnType<typeof installContextFooter> | undefined;
 	registerDashboard(pi, () => getFooterData?.());
 	pi.on("session_start", (_event, ctx) => {
