@@ -66,6 +66,7 @@ The Docker named volume stores the database under `/var/lib/postgresql` inside t
 | `/memory relink <old-path>` | Move a registered project's memories to the current checkout with confirmation. |
 | `/memory reindex [global\|project\|both]` | Retry indexing up to 50 unindexed memories. |
 | `/memory backup` | Create a PostgreSQL backup. |
+| `/memory suggest [scope] [focus]` | Ask the agent to review the session and propose durable memories (scope: global, project or both); each save still needs your confirmation. |
 | `/memory query <SELECT>` | Run a read-only SQL query, displaying a table of at most 100 rows and 30,000 characters. |
 
 The three panels `/task`, `/context`, and `/memory` are independent. Opening one closes the previous panel; left/right never switch panels. Each extension works without the other two loaded. Escape closes the active panel.
@@ -91,3 +92,7 @@ A memory is saved before its embedding is requested. If Google is unavailable, t
 ## Verification
 
 `npm test` runs local tests; the PostgreSQL integration test is skipped unless `LONG_MEMORY_TEST_DATABASE_URL` and `LONG_MEMORY_TEST_READER_URL` point to the same dedicated disposable database, named `pi_memory_test` or `pi_memory_test_*`, initialized with this schema (including `memory_revisions`) and reader grants. Coverage includes scoped retrieval, exact/concurrent deduplication, history, statistics, debug details, filters/pages, SQL restrictions, and confirmation. UI tests cover panel replacement and removal of cross-panel arrow navigation. That test deletes all memories and projects in its target database and must never target a database with real memories. `LONG_MEMORY_TEST_DATABASE_URL` must use the restricted application role; optionally set `LONG_MEMORY_TEST_OWNER_URL` to test rejection of a privileged role. `npm run typecheck` checks the extension types.
+
+## Agent behavior
+
+The `long_memory` tool carries its own prompt guidelines (`src/prompts.ts`), so the agent knows from session start that it can search memory when a request depends on past decisions or preferences. It may also propose a global or project memory on its own when it learns something durable; the proposal is a normal `save` call, so the confirmation dialog is the suggestion and nothing is stored without your approval.
